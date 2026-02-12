@@ -1,12 +1,10 @@
-version: '3.8'
-
 services:
-  # === BASE DE DONNÉES ===
+  # === BASES DE DONNÉES ===
   db-clients:
     image: postgres:15
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: faouz
+      POSTGRES_PASSWORD: faouz2020
       POSTGRES_DB: clients_db
     ports:
       - "5433:5432"
@@ -16,8 +14,8 @@ services:
   db-produits:
     image: postgres:15
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: faouz
+      POSTGRES_PASSWORD: faouz2020
       POSTGRES_DB: produits_db
     ports:
       - "5434:5432"
@@ -27,13 +25,41 @@ services:
   db-commandes:
     image: postgres:15
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: faouz
+      POSTGRES_PASSWORD: faouz2020
       POSTGRES_DB: commandes_db
     ports:
       - "5435:5432"
     volumes:
       - db_commandes_data:/var/lib/postgresql/data
+
+  # === APIs ===
+  api-clients:
+    build: ./api-clients
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://faouz:faouz2020@db-clients:5432/clients_db
+    depends_on:
+      - db-clients
+
+  api-produits:
+    build: ./api-produits
+    ports:
+      - "8001:8000"
+    environment:
+      DATABASE_URL: postgresql://faouz:faouz2020@db-produits:5432/produits_db
+    depends_on:
+      - db-produits
+
+  api-commandes:
+    build: ./api-commandes
+    ports:
+      - "8002:8000"
+    environment:
+      DATABASE_URL: postgresql://faouz:faouz2020@db-commandes:5432/commandes_db
+    depends_on:
+      - db-commandes
 
   # === MESSAGE BROKER ===
   rabbitmq:

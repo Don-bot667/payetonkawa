@@ -1,0 +1,51 @@
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from typing import List
+from . import crud, schemas
+from .database import get_db
+
+router = APIRouter(prefix="/orders", tags=["Orders"])
+
+
+# POST /orders : Creer une commande
+@router.post("/", response_model=schemas.CommandeResponse, status_code=201)
+def create_order(commande: schemas.CommandeCreate, db: Session = Depends(get_db)):
+    return crud.create_commande(db=db, commande=commande)
+
+
+# GET /orders : Lister toutes les commandes
+@router.get("/", response_model=List[schemas.CommandeResponse])
+def read_orders(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    return crud.get_commandes(db, skip=skip, limit=limit)
+
+
+# GET /orders/{id} : Recuperer une commande par son ID
+@router.get("/{commande_id}", response_model=schemas.CommandeResponse)
+def read_order(commande_id: int, db: Session = Depends(get_db)):
+    db_commande = crud.get_commande(db, commande_id=commande_id)
+    if db_commande is None:
+        raise HTTPException(status_code=404, detail="Commande non trouvee")
+    return db_commande
+
+
+# GET /orders/client/{client_id} : Commandes d'un client
+@router.get("/client/{client_id}", response_model=List[schemas.CommandeResponse])
+def read_orders_by_client(client_id: int, db: Session = Depends(get_db)):
+    return crud.get_commandes_by_client(db, client_id=client_id)
+
+
+# PUT /orders/{id} : Modifier le statut d'une commande
+@router.put("/{commande_id}", response_model=schemas.CommandeResponse)
+def update_order(commande_id: int, commande: schemas.CommandeUpdate, db: Session = Depends(get_db)):
+    db_commande = crud.update_commande(db, commande_id=commande_id, commande=commande)
+    if db_commande is None:
+        raise HTTPException(status_code=404, detail="Commande non trouvee")
+    return db_commande
+
+
+# DELETE /orders/{id} : Supprimer une commande
+@router.delete("/{commande_id}", status_code=204)
+def delete_order(commande_id: int, db: Session = Depends(get_db)):
+    success = crud.delete_commande(db, commande_id=commande_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Commande non trouvee")
