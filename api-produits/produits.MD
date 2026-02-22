@@ -421,7 +421,7 @@ services:
       POSTGRES_PASSWORD: faouz2020
       POSTGRES_DB: produits_db
     ports:
-      - "5434:5432"
+      - "5437:5432"
     volumes:
       - db_produits_data:/var/lib/postgresql/data
 
@@ -442,12 +442,12 @@ volumes:
 
 | Service | C'est quoi | Port |
 |---------|-----------|------|
-| `db-produits` | La base de donnees PostgreSQL | 5434 (pour ne pas entrer en conflit avec le 5433 de l'API Clients) |
+| `db-produits` | La base de donnees PostgreSQL | 5437 (pour ne pas entrer en conflit avec le 5436 de l'API Clients) |
 | `api-produits` | L'API Python/FastAPI | 8001 (pour ne pas entrer en conflit avec le 8000 de l'API Clients) |
 
 **Points importants :**
 - Le user est `faouz` avec le mot de passe `faouz2020` (comme pour l'API Clients)
-- Le port est `5434` (pas 5433 qui est deja pris par api-clients)
+- Le port est `5437` (pas 5436 qui est deja pris par api-clients)
 - Le port de l'API est `8001` (pas 8000 qui est deja pris par api-clients)
 - `depends_on` : l'API attend que PostgreSQL demarre avant de se lancer
 - `db_produits_data` : volume persistant, les donnees ne sont pas perdues quand on arrete Docker

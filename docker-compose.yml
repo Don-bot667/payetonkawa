@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: faouz2020
       POSTGRES_DB: clients_db
     ports:
-      - "5433:5432"
+      - "5436:5432"
     volumes:
       - db_clients_data:/var/lib/postgresql/data
 
@@ -18,7 +18,7 @@ services:
       POSTGRES_PASSWORD: faouz2020
       POSTGRES_DB: produits_db
     ports:
-      - "5434:5432"
+      - "5437:5432"
     volumes:
       - db_produits_data:/var/lib/postgresql/data
 
@@ -29,7 +29,7 @@ services:
       POSTGRES_PASSWORD: faouz2020
       POSTGRES_DB: commandes_db
     ports:
-      - "5435:5432"
+      - "5438:5432"
     volumes:
       - db_commandes_data:/var/lib/postgresql/data
 

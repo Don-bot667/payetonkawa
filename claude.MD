@@ -38,9 +38,9 @@ Le projet se compose de **3 APIs independantes** (micro-services) + un **fronten
 
 | Service | Port BDD | Port API |
 |---------|----------|----------|
-| api-clients | 5433 | 8000 |
-| api-produits | 5434 | 8001 |
-| api-commandes | 5435 | 8002 |
+| api-clients | 5436 | 8000 |
+| api-produits | 5437 | 8001 |
+| api-commandes | 5438 | 8002 |
 | rabbitmq | 5672 / 15672 | - |
 | frontend | - | 3000 (python3 -m http.server) |
 
@@ -86,8 +86,8 @@ payetonkawa/
 │   │   ├── schemas.py             <- Schemas Pydantic (ClientCreate, ClientResponse)
 │   │   ├── crud.py                <- CRUD (create, get, get_all, delete)
 │   │   └── routes.py              <- Routes /customers
-│   ├── .env                       <- DATABASE_URL locale (faouz:faouz2020@localhost:5433)
-│   ├── docker-compose.yml         <- Docker autonome (api + db sur 5433/8000)
+│   ├── .env                       <- DATABASE_URL locale (faouz:faouz2020@localhost:5436)
+│   ├── docker-compose.yml         <- Docker autonome (api + db sur 5436/8000)
 │   ├── Dockerfile                 <- Image Python 3.12 slim
 │   ├── requirements.txt           <- Dependances Python
 │   └── GUIDE.md                   <- Guide explicatif
@@ -101,7 +101,7 @@ payetonkawa/
 │   │   ├── schemas.py             <- ProduitCreate, ProduitUpdate, ProduitResponse
 │   │   ├── crud.py                <- CRUD (create, get, get_all, update, delete)
 │   │   └── routes.py              <- Routes /products
-│   ├── docker-compose.yml         <- Docker autonome (api + db sur 5434/8001)
+│   ├── docker-compose.yml         <- Docker autonome (api + db sur 5437/8001)
 │   ├── Dockerfile
 │   ├── requirements.txt
 │   └── produits.MD                <- Guide explicatif
@@ -115,7 +115,7 @@ payetonkawa/
 │   │   ├── schemas.py             <- LigneCommandeCreate/Response, CommandeCreate/Update/Response
 │   │   ├── crud.py                <- CRUD + get_by_client, calcul total auto
 │   │   └── routes.py              <- Routes /orders + /orders/client/{id}
-│   ├── docker-compose.yml         <- Docker autonome (api + db sur 5435/8002)
+│   ├── docker-compose.yml         <- Docker autonome (api + db sur 5438/8002)
 │   ├── Dockerfile
 │   ├── requirements.txt
 │   └── commandes.MD               <- Guide explicatif

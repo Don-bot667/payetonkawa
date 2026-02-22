@@ -477,7 +477,7 @@ services:
       POSTGRES_PASSWORD: faouz2020
       POSTGRES_DB: commandes_db
     ports:
-      - "5435:5432"
+      - "5438:5432"
     volumes:
       - db_commandes_data:/var/lib/postgresql/data
 
@@ -498,9 +498,9 @@ volumes:
 
 | Service | Port BDD (host) | Port API (host) |
 |---------|----------------|-----------------|
-| api-clients | 5433 | 8000 |
-| api-produits | 5434 | 8001 |
-| api-commandes | **5435** | **8002** |
+| api-clients | 5436 | 8000 |
+| api-produits | 5437 | 8001 |
+| api-commandes | **5438** | **8002** |
 
 Chaque API a ses propres ports pour eviter les conflits.
 

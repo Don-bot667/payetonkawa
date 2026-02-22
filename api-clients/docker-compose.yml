@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: faouz2020
       POSTGRES_DB: clients_db
     ports:
-      - "5433:5432"
+      - "5436:5432"
     volumes:
       - db_clients_data:/var/lib/postgresql/data
 

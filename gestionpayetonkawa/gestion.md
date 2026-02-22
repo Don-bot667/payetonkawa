@@ -1,4 +1,4 @@
-# GestionPayeTonKawa - Guide complet du Frontend
+# GestionPayeTonKawa - Guide complet du Frontend avec Astro
 
 ---
 
@@ -6,32 +6,95 @@
 
 Un site web de gestion pour PayeTonKawa. Il permet de gerer les clients, les produits et les commandes depuis le navigateur. Il appelle les 3 APIs qu'on a deja creees.
 
-Technos : **HTML + Tailwind CSS + JavaScript vanilla** (pas de framework).
+Technos : **Astro + Tailwind CSS + TypeScript**
 
 ```
 gestionpayetonkawa/
-├── index.html            ← Dashboard (page d'accueil)
-├── clients.html          ← Page de gestion des clients
-├── produits.html         ← Page de gestion des produits
-├── commandes.html        ← Page de gestion des commandes
-├── css/
-│   └── style.css         ← Styles personnalises (en plus de Tailwind)
-├── js/
-│   ├── api.js            ← Fonctions centrales pour appeler les 3 APIs
-│   ├── dashboard.js      ← Logique du dashboard (charger les stats)
-│   ├── clients.js        ← Logique CRUD clients
-│   ├── produits.js       ← Logique CRUD produits
-│   └── commandes.js      ← Logique CRUD commandes
-└── gestion.md            ← Ce fichier (le guide)
+├── astro.config.mjs          <- Configuration Astro
+├── tailwind.config.mjs       <- Configuration Tailwind
+├── tsconfig.json             <- Configuration TypeScript
+├── package.json              <- Dependances npm
+├── src/
+│   ├── layouts/
+│   │   └── Layout.astro      <- Layout principal (sidebar + structure)
+│   ├── components/
+│   │   ├── Sidebar.astro     <- Barre laterale de navigation
+│   │   ├── StatCard.astro    <- Carte de statistique
+│   │   └── Modal.astro       <- Composant modale reutilisable
+│   ├── lib/
+│   │   └── api.ts            <- Fonctions pour appeler les 3 APIs
+│   ├── pages/
+│   │   ├── index.astro       <- Dashboard (page d'accueil)
+│   │   ├── clients.astro     <- Page de gestion des clients
+│   │   ├── produits.astro    <- Page de gestion des produits
+│   │   └── commandes.astro   <- Page de gestion des commandes
+│   └── styles/
+│       └── global.css        <- Styles globaux
+└── gestion.md                <- Ce fichier (le guide)
+```
+
+---
+
+## POURQUOI ASTRO ?
+
+| Avantage | Explication |
+|----------|-------------|
+| **Simple** | Syntaxe proche du HTML, facile a apprendre |
+| **Rapide** | Genere du HTML statique, pas de JavaScript inutile |
+| **Composants** | On peut reutiliser des morceaux de code (sidebar, modales...) |
+| **Tailwind integre** | Installation en une commande |
+| **Routing automatique** | Chaque fichier dans `pages/` devient une page |
+
+---
+
+## ETAPE 1 : CREER LE PROJET ASTRO
+
+Ouvre ton terminal et place-toi dans le dossier `gestionpayetonkawa` :
+
+```bash
+cd /Users/faouzdon/Desktop/payetonkawa/gestionpayetonkawa
+```
+
+Cree le projet Astro (reponds aux questions) :
+
+```bash
+npm create astro@latest .
+```
+
+Quand il te demande :
+- **How would you like to start your new project?** → `Empty`
+- **Install dependencies?** → `Yes`
+- **Do you plan to write TypeScript?** → `Yes`
+- **How strict should TypeScript be?** → `Strict`
+- **Initialize a new git repository?** → `No` (on a deja un repo)
+
+---
+
+## ETAPE 2 : INSTALLER TAILWIND CSS
+
+```bash
+npx astro add tailwind
+```
+
+Reponds `Yes` a toutes les questions. Astro va configurer Tailwind automatiquement.
+
+---
+
+## ETAPE 3 : STRUCTURE DES FICHIERS
+
+Apres l'installation, cree les dossiers manquants :
+
+```bash
+mkdir -p src/layouts src/components src/lib src/styles
 ```
 
 ---
 
 ## AVANT DE COMMENCER : ACTIVER LE CORS
 
-Les APIs tournent sur les ports 8000, 8001, 8002. Le frontend tourne sur un autre port. Par defaut, le navigateur **bloque** les requetes entre ports differents (c'est une securite). Il faut activer le CORS (Cross-Origin Resource Sharing) dans chaque API.
+Les APIs tournent sur les ports 8000, 8001, 8002. Le frontend tourne sur un autre port (4321). Par defaut, le navigateur **bloque** les requetes entre ports differents. Il faut activer le CORS dans chaque API.
 
-Il faut modifier le fichier `main.py` de chaque API en ajoutant ces lignes :
+Modifie le fichier `main.py` de chaque API en ajoutant ces lignes :
 
 ```python
 from fastapi.middleware.cors import CORSMiddleware
@@ -51,15 +114,21 @@ Cela doit etre fait dans :
 - `api-produits/app/main.py`
 - `api-commandes/app/main.py`
 
+Puis relance les conteneurs Docker :
+```bash
+cd /Users/faouzdon/Desktop/payetonkawa
+docker compose down && docker compose up -d --build
+```
+
 ---
 
 ## FICHIER PAR FICHIER
 
 ---
 
-### 1. `css/style.css`
+### 1. `src/styles/global.css`
 
-**C'est quoi ?** Les styles personnalises en plus de Tailwind. On y met ce que Tailwind ne couvre pas directement.
+**C'est quoi ?** Les styles globaux de l'application. Tailwind est deja inclus via la config.
 
 ```css
 /* Police de caracteres */
@@ -99,41 +168,97 @@ tbody tr {
 .badge-annulee { background-color: #fee2e2; color: #991b1b; }
 ```
 
-**Explication :**
-
-| Style | A quoi ca sert |
-|-------|---------------|
-| `nav-link.active` | Met en surbrillance le lien de la page actuelle dans la sidebar |
-| `tbody tr transition` | Animation douce quand on survole une ligne du tableau |
-| `modal-backdrop` | Animation d'ouverture/fermeture des modales (pop-ups) |
-| `.badge-*` | Couleurs differentes selon le statut de la commande |
-
 ---
 
-### 2. `js/api.js`
+### 2. `src/lib/api.ts`
 
-**C'est quoi ?** Le fichier central qui contient toutes les fonctions pour appeler les 3 APIs. Tous les autres fichiers JS utilisent celui-ci.
+**C'est quoi ?** Le fichier central qui contient toutes les fonctions pour appeler les 3 APIs. TypeScript permet d'avoir des types pour eviter les erreurs.
 
-```javascript
+```typescript
 // Adresses des 3 APIs
 const API_CLIENTS = "http://localhost:8000";
 const API_PRODUITS = "http://localhost:8001";
 const API_COMMANDES = "http://localhost:8002";
 
+// --- TYPES ---
+
+export interface Client {
+    id: number;
+    nom: string;
+    prenom: string;
+    email: string;
+    telephone?: string;
+    adresse?: string;
+}
+
+export interface ClientCreate {
+    nom: string;
+    prenom: string;
+    email: string;
+    telephone?: string;
+    adresse?: string;
+}
+
+export interface Produit {
+    id: number;
+    nom: string;
+    description?: string;
+    prix: number;
+    stock: number;
+    poids_kg: number;
+    origine?: string;
+}
+
+export interface ProduitCreate {
+    nom: string;
+    description?: string;
+    prix: number;
+    stock: number;
+    poids_kg: number;
+    origine?: string;
+}
+
+export interface LigneCommande {
+    id: number;
+    produit_id: number;
+    quantite: number;
+    prix_unitaire: number;
+}
+
+export interface LigneCommandeCreate {
+    produit_id: number;
+    quantite: number;
+    prix_unitaire: number;
+}
+
+export interface Commande {
+    id: number;
+    client_id: number;
+    date_commande: string;
+    statut: string;
+    total: number;
+    lignes: LigneCommande[];
+}
+
+export interface CommandeCreate {
+    client_id: number;
+    lignes: LigneCommandeCreate[];
+}
+
 // --- CLIENTS ---
 
-async function getClients() {
-    const response = await fetch(API_CLIENTS + "/customers/");
+export async function getClients(): Promise<Client[]> {
+    const response = await fetch(`${API_CLIENTS}/customers/`);
     return await response.json();
 }
 
-async function getClient(id) {
-    const response = await fetch(API_CLIENTS + "/customers/" + id);
+export async function getClient(id: number): Promise<Client> {
+    const response = await fetch(`${API_CLIENTS}/customers/${id}`);
     return await response.json();
 }
 
-async function createClient(data) {
-    const response = await fetch(API_CLIENTS + "/customers/", {
+export async function createClient(data: ClientCreate): Promise<Client> {
+    const response = await fetch(`${API_CLIENTS}/customers/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data)
@@ -141,26 +266,26 @@ async function createClient(data) {
     return await response.json();
 }
 
-async function deleteClient(id) {
-    await fetch(API_CLIENTS + "/customers/" + id, {
+export async function deleteClient(id: number): Promise<void> {
+    await fetch(`${API_CLIENTS}/customers/${id}`, {
         method: "DELETE"
     });
 }
 
 // --- PRODUITS ---
 
-async function getProduits() {
-    const response = await fetch(API_PRODUITS + "/products/");
+export async function getProduits(): Promise<Produit[]> {
+    const response = await fetch(`${API_PRODUITS}/products/`);
     return await response.json();
 }
 
-async function getProduit(id) {
-    const response = await fetch(API_PRODUITS + "/products/" + id);
+export async function getProduit(id: number): Promise<Produit> {
+    const response = await fetch(`${API_PRODUITS}/products/${id}`);
     return await response.json();
 }
 
-async function createProduit(data) {
-    const response = await fetch(API_PRODUITS + "/products/", {
+export async function createProduit(data: ProduitCreate): Promise<Produit> {
+    const response = await fetch(`${API_PRODUITS}/products/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data)
@@ -168,8 +293,8 @@ async function createProduit(data) {
     return await response.json();
 }
 
-async function updateProduit(id, data) {
-    const response = await fetch(API_PRODUITS + "/products/" + id, {
+export async function updateProduit(id: number, data: Partial<ProduitCreate>): Promise<Produit> {
+    const response = await fetch(`${API_PRODUITS}/products/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data)
@@ -177,26 +302,26 @@ async function updateProduit(id, data) {
     return await response.json();
 }
 
-async function deleteProduit(id) {
-    await fetch(API_PRODUITS + "/products/" + id, {
+export async function deleteProduit(id: number): Promise<void> {
+    await fetch(`${API_PRODUITS}/products/${id}`, {
         method: "DELETE"
     });
 }
 
 // --- COMMANDES ---
 
-async function getCommandes() {
-    const response = await fetch(API_COMMANDES + "/orders/");
+export async function getCommandes(): Promise<Commande[]> {
+    const response = await fetch(`${API_COMMANDES}/orders/`);
     return await response.json();
 }
 
-async function getCommande(id) {
-    const response = await fetch(API_COMMANDES + "/orders/" + id);
+export async function getCommande(id: number): Promise<Commande> {
+    const response = await fetch(`${API_COMMANDES}/orders/${id}`);
     return await response.json();
 }
 
-async function createCommande(data) {
-    const response = await fetch(API_COMMANDES + "/orders/", {
+export async function createCommande(data: CommandeCreate): Promise<Commande> {
+    const response = await fetch(`${API_COMMANDES}/orders/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data)
@@ -204,8 +329,8 @@ async function createCommande(data) {
     return await response.json();
 }
 
-async function updateCommande(id, data) {
-    const response = await fetch(API_COMMANDES + "/orders/" + id, {
+export async function updateCommande(id: number, data: { statut: string }): Promise<Commande> {
+    const response = await fetch(`${API_COMMANDES}/orders/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data)
@@ -213,297 +338,351 @@ async function updateCommande(id, data) {
     return await response.json();
 }
 
-async function deleteCommande(id) {
-    await fetch(API_COMMANDES + "/orders/" + id, {
+export async function deleteCommande(id: number): Promise<void> {
+    await fetch(`${API_COMMANDES}/orders/${id}`, {
         method: "DELETE"
     });
 }
 ```
 
-**Explication des concepts :**
+**Explication des concepts TypeScript :**
 
 | Concept | Explication simple |
 |---------|-------------------|
-| `async / await` | Permet d'attendre la reponse de l'API avant de continuer |
-| `fetch(url)` | Envoie une requete HTTP a l'API (comme Postman mais en code) |
-| `response.json()` | Transforme la reponse en objet JavaScript utilisable |
-| `JSON.stringify(data)` | Transforme un objet JS en texte JSON pour l'envoyer |
-| `method: "POST"` | Cree quelque chose. "PUT" = modifier. "DELETE" = supprimer |
-| `headers: { "Content-Type": "application/json" }` | Dit a l'API qu'on envoie du JSON |
+| `interface` | Definit la structure d'un objet (quels champs, quels types) |
+| `Promise<Client[]>` | La fonction retourne une promesse qui contiendra une liste de clients |
+| `Partial<ProduitCreate>` | Permet d'envoyer seulement certains champs (pas tous obligatoires) |
+| `?: string` | Le champ est optionnel (peut etre absent ou null) |
 
 ---
 
-### 3. `index.html` (Dashboard)
+### 3. `src/components/Sidebar.astro`
 
-**C'est quoi ?** La page d'accueil. Elle affiche 3 cartes avec les statistiques (nombre de clients, produits, commandes) et un tableau des dernieres commandes.
+**C'est quoi ?** La barre laterale de navigation. On la met dans un composant pour la reutiliser sur toutes les pages.
 
-```html
+```astro
+---
+// Props : la page actuelle pour mettre le lien en surbrillance
+interface Props {
+    currentPage: 'dashboard' | 'clients' | 'produits' | 'commandes';
+}
+
+const { currentPage } = Astro.props;
+---
+
+<aside class="w-64 bg-gray-900 text-white flex flex-col">
+    <div class="p-6 border-b border-gray-700">
+        <h1 class="text-xl font-bold">PayeTonKawa</h1>
+        <p class="text-gray-400 text-sm">Gestion</p>
+    </div>
+    <nav class="flex-1 p-4 space-y-1">
+        <a
+            href="/"
+            class:list={[
+                "nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white",
+                { active: currentPage === 'dashboard' }
+            ]}
+        >
+            <span>Dashboard</span>
+        </a>
+        <a
+            href="/clients"
+            class:list={[
+                "nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white",
+                { active: currentPage === 'clients' }
+            ]}
+        >
+            <span>Clients</span>
+        </a>
+        <a
+            href="/produits"
+            class:list={[
+                "nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white",
+                { active: currentPage === 'produits' }
+            ]}
+        >
+            <span>Produits</span>
+        </a>
+        <a
+            href="/commandes"
+            class:list={[
+                "nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white",
+                { active: currentPage === 'commandes' }
+            ]}
+        >
+            <span>Commandes</span>
+        </a>
+    </nav>
+    <div class="p-4 border-t border-gray-700 text-gray-500 text-xs">
+        v1.0.0
+    </div>
+</aside>
+```
+
+**Explication Astro :**
+
+| Concept | Explication |
+|---------|-------------|
+| `---` (frontmatter) | Code JavaScript/TypeScript execute cote serveur |
+| `interface Props` | Definit les parametres que le composant accepte |
+| `Astro.props` | Recupere les parametres passes au composant |
+| `class:list` | Permet de conditionner les classes CSS |
+
+---
+
+### 4. `src/components/StatCard.astro`
+
+**C'est quoi ?** Une carte de statistique reutilisable pour le dashboard.
+
+```astro
+---
+interface Props {
+    title: string;
+    value: string | number;
+    description: string;
+    id?: string;
+}
+
+const { title, value, description, id } = Astro.props;
+---
+
+<div class="bg-white rounded-xl shadow-sm border p-6">
+    <p class="text-sm text-gray-500 uppercase tracking-wide">{title}</p>
+    <p id={id} class="text-3xl font-bold mt-2">{value}</p>
+    <p class="text-sm text-gray-400 mt-1">{description}</p>
+</div>
+```
+
+---
+
+### 5. `src/layouts/Layout.astro`
+
+**C'est quoi ?** Le layout principal qui englobe toutes les pages. Il contient le head HTML, la sidebar et la structure generale.
+
+```astro
+---
+import Sidebar from '../components/Sidebar.astro';
+import '../styles/global.css';
+
+interface Props {
+    title: string;
+    currentPage: 'dashboard' | 'clients' | 'produits' | 'commandes';
+}
+
+const { title, currentPage } = Astro.props;
+---
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GestionPayeTonKawa - Dashboard</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>{title} - GestionPayeTonKawa</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/style.css">
 </head>
 <body class="bg-gray-50 text-gray-800">
     <div class="flex h-screen">
+        <Sidebar currentPage={currentPage} />
 
-        <!-- SIDEBAR -->
-        <aside class="w-64 bg-gray-900 text-white flex flex-col">
-            <div class="p-6 border-b border-gray-700">
-                <h1 class="text-xl font-bold">PayeTonKawa</h1>
-                <p class="text-gray-400 text-sm">Gestion</p>
-            </div>
-            <nav class="flex-1 p-4 space-y-1">
-                <a href="index.html" class="nav-link active flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white">
-                    <span>Dashboard</span>
-                </a>
-                <a href="clients.html" class="nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white">
-                    <span>Clients</span>
-                </a>
-                <a href="produits.html" class="nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white">
-                    <span>Produits</span>
-                </a>
-                <a href="commandes.html" class="nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white">
-                    <span>Commandes</span>
-                </a>
-            </nav>
-            <div class="p-4 border-t border-gray-700 text-gray-500 text-xs">
-                v1.0.0
-            </div>
-        </aside>
-
-        <!-- CONTENU PRINCIPAL -->
         <main class="flex-1 overflow-y-auto">
-            <header class="bg-white border-b px-8 py-5">
-                <h2 class="text-2xl font-semibold">Dashboard</h2>
-                <p class="text-gray-500 text-sm mt-1">Vue d'ensemble de l'activite</p>
-            </header>
-
-            <div class="p-8">
-                <!-- 3 CARTES DE STATISTIQUES -->
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                    <!-- Carte Clients -->
-                    <div class="bg-white rounded-xl shadow-sm border p-6">
-                        <p class="text-sm text-gray-500 uppercase tracking-wide">Clients</p>
-                        <p id="stat-clients" class="text-3xl font-bold mt-2">--</p>
-                        <p class="text-sm text-gray-400 mt-1">clients enregistres</p>
-                    </div>
-                    <!-- Carte Produits -->
-                    <div class="bg-white rounded-xl shadow-sm border p-6">
-                        <p class="text-sm text-gray-500 uppercase tracking-wide">Produits</p>
-                        <p id="stat-produits" class="text-3xl font-bold mt-2">--</p>
-                        <p class="text-sm text-gray-400 mt-1">produits en catalogue</p>
-                    </div>
-                    <!-- Carte Commandes -->
-                    <div class="bg-white rounded-xl shadow-sm border p-6">
-                        <p class="text-sm text-gray-500 uppercase tracking-wide">Commandes</p>
-                        <p id="stat-commandes" class="text-3xl font-bold mt-2">--</p>
-                        <p class="text-sm text-gray-400 mt-1">commandes passees</p>
-                    </div>
-                </div>
-
-                <!-- TABLEAU DES DERNIERES COMMANDES -->
-                <div class="bg-white rounded-xl shadow-sm border">
-                    <div class="px-6 py-4 border-b">
-                        <h3 class="text-lg font-semibold">Dernieres commandes</h3>
-                    </div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full">
-                            <thead class="bg-gray-50 text-left text-sm text-gray-500">
-                                <tr>
-                                    <th class="px-6 py-3">ID</th>
-                                    <th class="px-6 py-3">Client ID</th>
-                                    <th class="px-6 py-3">Total</th>
-                                    <th class="px-6 py-3">Statut</th>
-                                    <th class="px-6 py-3">Date</th>
-                                </tr>
-                            </thead>
-                            <tbody id="table-commandes" class="divide-y text-sm">
-                                <!-- Rempli par JavaScript -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
+            <slot />
         </main>
     </div>
-
-    <script src="js/api.js"></script>
-    <script src="js/dashboard.js"></script>
 </body>
 </html>
 ```
 
-**Structure de la page :**
-
-| Zone | Ce qu'elle contient |
-|------|-------------------|
-| Sidebar (a gauche) | Logo + liens de navigation (Dashboard, Clients, Produits, Commandes) |
-| Header (en haut) | Titre de la page |
-| 3 cartes | Nombre de clients, produits, commandes (charges depuis les APIs) |
-| Tableau | Les dernieres commandes |
-
-**Concepts Tailwind utilises :**
-
-| Classe | Ce que ca fait |
-|--------|---------------|
-| `flex h-screen` | Disposition en colonnes, hauteur 100% de l'ecran |
-| `w-64` | Largeur fixe pour la sidebar (256px) |
-| `grid grid-cols-3 gap-6` | Grille de 3 colonnes avec espacement |
-| `rounded-xl shadow-sm` | Coins arrondis + ombre legere |
-| `bg-gray-50` | Fond gris tres clair |
-| `text-2xl font-semibold` | Texte grand et semi-gras |
-| `overflow-y-auto` | Scroll vertical si le contenu depasse |
-
----
-
-### 4. `js/dashboard.js`
-
-**C'est quoi ?** Le code JavaScript qui charge les statistiques et les commandes au chargement de la page.
-
-```javascript
-// Se lance quand la page est chargee
-document.addEventListener("DOMContentLoaded", async function () {
-    // Charger les stats
-    try {
-        const clients = await getClients();
-        document.getElementById("stat-clients").textContent = clients.length;
-    } catch (e) {
-        document.getElementById("stat-clients").textContent = "Err";
-    }
-
-    try {
-        const produits = await getProduits();
-        document.getElementById("stat-produits").textContent = produits.length;
-    } catch (e) {
-        document.getElementById("stat-produits").textContent = "Err";
-    }
-
-    try {
-        const commandes = await getCommandes();
-        document.getElementById("stat-commandes").textContent = commandes.length;
-
-        // Afficher les 5 dernieres commandes dans le tableau
-        const tbody = document.getElementById("table-commandes");
-        const dernieres = commandes.slice(-5).reverse();
-
-        if (dernieres.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-8 text-center text-gray-400">Aucune commande</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = dernieres.map(function (c) {
-            const date = new Date(c.date_commande).toLocaleDateString("fr-FR");
-            return '<tr class="hover:bg-gray-50">'
-                + '<td class="px-6 py-3 font-medium">#' + c.id + '</td>'
-                + '<td class="px-6 py-3">' + c.client_id + '</td>'
-                + '<td class="px-6 py-3 font-medium">' + c.total.toFixed(2) + ' EUR</td>'
-                + '<td class="px-6 py-3"><span class="badge badge-' + c.statut + '">' + c.statut + '</span></td>'
-                + '<td class="px-6 py-3 text-gray-500">' + date + '</td>'
-                + '</tr>';
-        }).join("");
-
-    } catch (e) {
-        document.getElementById("stat-commandes").textContent = "Err";
-    }
-});
-```
-
 **Explication :**
 
-| Partie | Ce que ca fait |
-|--------|---------------|
-| `document.addEventListener("DOMContentLoaded", ...)` | Attend que la page soit chargee avant de lancer le code |
-| `await getClients()` | Appelle l'API Clients et attend la reponse |
-| `.length` | Compte le nombre d'elements dans la liste |
-| `try / catch` | Si l'API ne repond pas, affiche "Err" au lieu de planter |
-| `.slice(-5).reverse()` | Prend les 5 dernieres commandes et les met dans l'ordre du plus recent |
-| `.toFixed(2)` | Affiche le prix avec 2 decimales (15.90 au lieu de 15.9) |
-| `.toLocaleDateString("fr-FR")` | Affiche la date en format francais (12/02/2026) |
+| Concept | Explication |
+|---------|-------------|
+| `import` | Importe un composant ou un fichier CSS |
+| `<slot />` | L'endroit ou le contenu de la page sera insere |
+| `{title}` | Affiche la valeur de la variable `title` |
 
 ---
 
-### 5. `clients.html`
+### 6. `src/pages/index.astro` (Dashboard)
 
-**C'est quoi ?** La page de gestion des clients. Affiche un tableau avec tous les clients et permet d'en ajouter ou supprimer.
+**C'est quoi ?** La page d'accueil. Elle affiche 3 cartes avec les statistiques et un tableau des dernieres commandes.
 
-```html
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GestionPayeTonKawa - Clients</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/style.css">
-</head>
-<body class="bg-gray-50 text-gray-800">
-    <div class="flex h-screen">
+```astro
+---
+import Layout from '../layouts/Layout.astro';
+import StatCard from '../components/StatCard.astro';
+---
 
-        <!-- SIDEBAR -->
-        <aside class="w-64 bg-gray-900 text-white flex flex-col">
-            <div class="p-6 border-b border-gray-700">
-                <h1 class="text-xl font-bold">PayeTonKawa</h1>
-                <p class="text-gray-400 text-sm">Gestion</p>
+<Layout title="Dashboard" currentPage="dashboard">
+    <header class="bg-white border-b px-8 py-5">
+        <h2 class="text-2xl font-semibold">Dashboard</h2>
+        <p class="text-gray-500 text-sm mt-1">Vue d'ensemble de l'activite</p>
+    </header>
+
+    <div class="p-8">
+        <!-- 3 CARTES DE STATISTIQUES -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <StatCard
+                title="Clients"
+                value="--"
+                description="clients enregistres"
+                id="stat-clients"
+            />
+            <StatCard
+                title="Produits"
+                value="--"
+                description="produits en catalogue"
+                id="stat-produits"
+            />
+            <StatCard
+                title="Commandes"
+                value="--"
+                description="commandes passees"
+                id="stat-commandes"
+            />
+        </div>
+
+        <!-- TABLEAU DES DERNIERES COMMANDES -->
+        <div class="bg-white rounded-xl shadow-sm border">
+            <div class="px-6 py-4 border-b">
+                <h3 class="text-lg font-semibold">Dernieres commandes</h3>
             </div>
-            <nav class="flex-1 p-4 space-y-1">
-                <a href="index.html" class="nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white">
-                    <span>Dashboard</span>
-                </a>
-                <a href="clients.html" class="nav-link active flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white">
-                    <span>Clients</span>
-                </a>
-                <a href="produits.html" class="nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white">
-                    <span>Produits</span>
-                </a>
-                <a href="commandes.html" class="nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white">
-                    <span>Commandes</span>
-                </a>
-            </nav>
-            <div class="p-4 border-t border-gray-700 text-gray-500 text-xs">
-                v1.0.0
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50 text-left text-sm text-gray-500">
+                        <tr>
+                            <th class="px-6 py-3">ID</th>
+                            <th class="px-6 py-3">Client ID</th>
+                            <th class="px-6 py-3">Total</th>
+                            <th class="px-6 py-3">Statut</th>
+                            <th class="px-6 py-3">Date</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-commandes" class="divide-y text-sm">
+                        <tr>
+                            <td colspan="5" class="px-6 py-8 text-center text-gray-400">Chargement...</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
-        </aside>
+        </div>
+    </div>
+</Layout>
 
-        <!-- CONTENU PRINCIPAL -->
-        <main class="flex-1 overflow-y-auto">
-            <header class="bg-white border-b px-8 py-5 flex items-center justify-between">
-                <div>
-                    <h2 class="text-2xl font-semibold">Clients</h2>
-                    <p class="text-gray-500 text-sm mt-1">Gestion des clients</p>
-                </div>
-                <button onclick="openModal()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition">
-                    + Ajouter un client
-                </button>
-            </header>
+<script>
+    // Ce code s'execute cote client (dans le navigateur)
+    import { getClients, getProduits, getCommandes } from '../lib/api';
 
-            <div class="p-8">
-                <div class="bg-white rounded-xl shadow-sm border">
-                    <div class="overflow-x-auto">
-                        <table class="w-full">
-                            <thead class="bg-gray-50 text-left text-sm text-gray-500">
-                                <tr>
-                                    <th class="px-6 py-3">ID</th>
-                                    <th class="px-6 py-3">Nom</th>
-                                    <th class="px-6 py-3">Prenom</th>
-                                    <th class="px-6 py-3">Email</th>
-                                    <th class="px-6 py-3">Telephone</th>
-                                    <th class="px-6 py-3">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="table-clients" class="divide-y text-sm">
-                                <!-- Rempli par JavaScript -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+    async function loadDashboard() {
+        // Charger les stats clients
+        try {
+            const clients = await getClients();
+            const el = document.getElementById("stat-clients");
+            if (el) el.textContent = String(clients.length);
+        } catch (e) {
+            const el = document.getElementById("stat-clients");
+            if (el) el.textContent = "Err";
+        }
+
+        // Charger les stats produits
+        try {
+            const produits = await getProduits();
+            const el = document.getElementById("stat-produits");
+            if (el) el.textContent = String(produits.length);
+        } catch (e) {
+            const el = document.getElementById("stat-produits");
+            if (el) el.textContent = "Err";
+        }
+
+        // Charger les stats commandes + tableau
+        try {
+            const commandes = await getCommandes();
+            const elStat = document.getElementById("stat-commandes");
+            if (elStat) elStat.textContent = String(commandes.length);
+
+            const tbody = document.getElementById("table-commandes");
+            if (!tbody) return;
+
+            const dernieres = commandes.slice(-5).reverse();
+
+            if (dernieres.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-8 text-center text-gray-400">Aucune commande</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = dernieres.map(c => {
+                const date = new Date(c.date_commande).toLocaleDateString("fr-FR");
+                return `<tr class="hover:bg-gray-50">
+                    <td class="px-6 py-3 font-medium">#${c.id}</td>
+                    <td class="px-6 py-3">${c.client_id}</td>
+                    <td class="px-6 py-3 font-medium">${c.total.toFixed(2)} EUR</td>
+                    <td class="px-6 py-3"><span class="badge badge-${c.statut}">${c.statut}</span></td>
+                    <td class="px-6 py-3 text-gray-500">${date}</td>
+                </tr>`;
+            }).join("");
+
+        } catch (e) {
+            const el = document.getElementById("stat-commandes");
+            if (el) el.textContent = "Err";
+        }
+    }
+
+    // Lancer au chargement de la page
+    loadDashboard();
+</script>
+```
+
+**Explication du `<script>` dans Astro :**
+
+| Concept | Explication |
+|---------|-------------|
+| `<script>` | Code qui s'execute dans le navigateur (cote client) |
+| `import` dans script | Importe les fonctions API |
+| Template literals `` ` `` | Permet d'inserer des variables dans du texte avec `${variable}` |
+
+---
+
+### 7. `src/pages/clients.astro`
+
+**C'est quoi ?** La page de gestion des clients. Affiche un tableau et permet d'ajouter/supprimer des clients.
+
+```astro
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Clients" currentPage="clients">
+    <header class="bg-white border-b px-8 py-5 flex items-center justify-between">
+        <div>
+            <h2 class="text-2xl font-semibold">Clients</h2>
+            <p class="text-gray-500 text-sm mt-1">Gestion des clients</p>
+        </div>
+        <button id="btn-ajouter" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition">
+            + Ajouter un client
+        </button>
+    </header>
+
+    <div class="p-8">
+        <div class="bg-white rounded-xl shadow-sm border">
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50 text-left text-sm text-gray-500">
+                        <tr>
+                            <th class="px-6 py-3">ID</th>
+                            <th class="px-6 py-3">Nom</th>
+                            <th class="px-6 py-3">Prenom</th>
+                            <th class="px-6 py-3">Email</th>
+                            <th class="px-6 py-3">Telephone</th>
+                            <th class="px-6 py-3">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-clients" class="divide-y text-sm">
+                        <tr>
+                            <td colspan="6" class="px-6 py-8 text-center text-gray-400">Chargement...</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
-        </main>
+        </div>
     </div>
 
     <!-- MODALE : Formulaire d'ajout -->
@@ -511,7 +690,7 @@ document.addEventListener("DOMContentLoaded", async function () {
         <div class="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 p-6">
             <div class="flex items-center justify-between mb-6">
                 <h3 class="text-lg font-semibold">Nouveau client</h3>
-                <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+                <button id="btn-close-modal" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
             </div>
             <form id="form-client" class="space-y-4">
                 <div class="grid grid-cols-2 gap-4">
@@ -539,236 +718,171 @@ document.addEventListener("DOMContentLoaded", async function () {
                     </div>
                 </div>
                 <div class="flex justify-end gap-3 pt-4">
-                    <button type="button" onclick="closeModal()" class="px-4 py-2 text-sm text-gray-600 border rounded-lg hover:bg-gray-50 transition">Annuler</button>
+                    <button type="button" id="btn-annuler" class="px-4 py-2 text-sm text-gray-600 border rounded-lg hover:bg-gray-50 transition">Annuler</button>
                     <button type="submit" class="px-4 py-2 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition">Enregistrer</button>
                 </div>
             </form>
         </div>
     </div>
+</Layout>
 
-    <script src="js/api.js"></script>
-    <script src="js/clients.js"></script>
-</body>
-</html>
-```
+<script>
+    import { getClients, createClient, deleteClient, type ClientCreate } from '../lib/api';
 
-**Elements de la page :**
+    const modal = document.getElementById("modal")!;
+    const btnAjouter = document.getElementById("btn-ajouter")!;
+    const btnClose = document.getElementById("btn-close-modal")!;
+    const btnAnnuler = document.getElementById("btn-annuler")!;
+    const form = document.getElementById("form-client") as HTMLFormElement;
+    const tbody = document.getElementById("table-clients")!;
 
-| Element | Ce que c'est |
-|---------|-------------|
-| Bouton "Ajouter" | En haut a droite, ouvre la modale |
-| Tableau | Liste tous les clients avec ID, Nom, Prenom, Email, Telephone |
-| Actions | Bouton "Supprimer" sur chaque ligne |
-| Modale | Formulaire pop-up pour ajouter un client (nom, prenom, email, telephone, adresse) |
-
-**Concepts HTML/Tailwind :**
-
-| Element | Explication |
-|---------|-------------|
-| `onclick="openModal()"` | Appelle la fonction JS quand on clique |
-| `fixed inset-0` | La modale couvre tout l'ecran |
-| `hidden` | Cache la modale par defaut |
-| `z-50` | La modale passe au-dessus de tout |
-| `focus:ring-2 focus:ring-indigo-500` | Bordure violette quand on clique sur un champ |
-
----
-
-### 6. `js/clients.js`
-
-**C'est quoi ?** Le code JavaScript de la page clients. Il charge la liste, gere l'ajout et la suppression.
-
-```javascript
-// Charger la liste des clients au demarrage
-document.addEventListener("DOMContentLoaded", function () {
-    loadClients();
-});
-
-// Charger et afficher les clients
-async function loadClients() {
-    var tbody = document.getElementById("table-clients");
-
-    try {
-        var clients = await getClients();
-
-        if (clients.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-8 text-center text-gray-400">Aucun client enregistre</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = clients.map(function (c) {
-            return '<tr class="hover:bg-gray-50">'
-                + '<td class="px-6 py-3 font-medium">#' + c.id + '</td>'
-                + '<td class="px-6 py-3">' + c.nom + '</td>'
-                + '<td class="px-6 py-3">' + c.prenom + '</td>'
-                + '<td class="px-6 py-3">' + c.email + '</td>'
-                + '<td class="px-6 py-3">' + (c.telephone || '-') + '</td>'
-                + '<td class="px-6 py-3">'
-                + '  <button onclick="supprimerClient(' + c.id + ')" class="text-red-600 hover:text-red-800 text-sm font-medium">Supprimer</button>'
-                + '</td>'
-                + '</tr>';
-        }).join("");
-
-    } catch (e) {
-        tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-8 text-center text-red-500">Erreur de connexion a l\'API</td></tr>';
-    }
-}
-
-// Ouvrir la modale
-function openModal() {
-    document.getElementById("modal").classList.remove("hidden");
-    document.getElementById("modal").classList.add("flex");
-}
-
-// Fermer la modale
-function closeModal() {
-    document.getElementById("modal").classList.add("hidden");
-    document.getElementById("modal").classList.remove("flex");
-    document.getElementById("form-client").reset();
-}
-
-// Envoyer le formulaire
-document.getElementById("form-client").addEventListener("submit", async function (e) {
-    e.preventDefault();
-
-    var data = {
-        nom: document.getElementById("input-nom").value,
-        prenom: document.getElementById("input-prenom").value,
-        email: document.getElementById("input-email").value,
-        telephone: document.getElementById("input-telephone").value || null,
-        adresse: document.getElementById("input-adresse").value || null
-    };
-
-    try {
-        await createClient(data);
-        closeModal();
-        loadClients();
-    } catch (e) {
-        alert("Erreur lors de la creation du client");
-    }
-});
-
-// Supprimer un client
-async function supprimerClient(id) {
-    if (confirm("Voulez-vous vraiment supprimer ce client ?")) {
+    // Charger les clients
+    async function loadClients() {
         try {
-            await deleteClient(id);
-            loadClients();
-        } catch (e) {
-            alert("Erreur lors de la suppression");
+            const clients = await getClients();
+
+            if (clients.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-8 text-center text-gray-400">Aucun client enregistre</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = clients.map(c => `
+                <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-3 font-medium">#${c.id}</td>
+                    <td class="px-6 py-3">${c.nom}</td>
+                    <td class="px-6 py-3">${c.prenom}</td>
+                    <td class="px-6 py-3">${c.email}</td>
+                    <td class="px-6 py-3">${c.telephone || '-'}</td>
+                    <td class="px-6 py-3">
+                        <button data-delete="${c.id}" class="text-red-600 hover:text-red-800 text-sm font-medium">Supprimer</button>
+                    </td>
+                </tr>
+            `).join("");
+
+            // Ajouter les event listeners pour les boutons supprimer
+            document.querySelectorAll('[data-delete]').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const id = (e.target as HTMLElement).dataset.delete!;
+                    if (confirm("Voulez-vous vraiment supprimer ce client ?")) {
+                        try {
+                            await deleteClient(parseInt(id));
+                            loadClients();
+                        } catch {
+                            alert("Erreur lors de la suppression");
+                        }
+                    }
+                });
+            });
+
+        } catch {
+            tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-8 text-center text-red-500">Erreur de connexion a l\'API</td></tr>';
         }
     }
-}
+
+    // Ouvrir/fermer la modale
+    function openModal() {
+        modal.classList.remove("hidden");
+        modal.classList.add("flex");
+    }
+
+    function closeModal() {
+        modal.classList.add("hidden");
+        modal.classList.remove("flex");
+        form.reset();
+    }
+
+    btnAjouter.addEventListener('click', openModal);
+    btnClose.addEventListener('click', closeModal);
+    btnAnnuler.addEventListener('click', closeModal);
+
+    // Soumettre le formulaire
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const data: ClientCreate = {
+            nom: (document.getElementById("input-nom") as HTMLInputElement).value,
+            prenom: (document.getElementById("input-prenom") as HTMLInputElement).value,
+            email: (document.getElementById("input-email") as HTMLInputElement).value,
+            telephone: (document.getElementById("input-telephone") as HTMLInputElement).value || undefined,
+            adresse: (document.getElementById("input-adresse") as HTMLInputElement).value || undefined
+        };
+
+        try {
+            await createClient(data);
+            closeModal();
+            loadClients();
+        } catch {
+            alert("Erreur lors de la creation du client");
+        }
+    });
+
+    // Charger au demarrage
+    loadClients();
+</script>
 ```
 
-**Chaque fonction expliquee :**
-
-| Fonction | Ce qu'elle fait |
-|----------|----------------|
-| `loadClients()` | Appelle l'API, recupere les clients, les affiche dans le tableau |
-| `openModal()` | Affiche le formulaire pop-up |
-| `closeModal()` | Cache le formulaire et vide les champs |
-| `submit (formulaire)` | Recupere les valeurs du formulaire, appelle `createClient`, recharge la liste |
-| `supprimerClient(id)` | Demande confirmation, appelle `deleteClient`, recharge la liste |
-
-**Concepts JS :**
+**Concepts importants :**
 
 | Concept | Explication |
 |---------|-------------|
-| `e.preventDefault()` | Empeche le formulaire de recharger la page |
-| `confirm(...)` | Affiche une boite de dialogue Oui/Non |
-| `.classList.add("hidden")` | Ajoute la classe "hidden" pour cacher un element |
-| `.classList.remove("hidden")` | Retire la classe "hidden" pour montrer un element |
-| `\|\| null` | Si le champ est vide, envoie null a l'API |
-| `.map(function(c) {...}).join("")` | Transforme chaque client en ligne HTML et les assemble |
+| `document.getElementById("...")!` | Le `!` dit a TypeScript que l'element existe forcement |
+| `as HTMLFormElement` | Indique a TypeScript le type exact de l'element |
+| `data-delete="${c.id}"` | Attribut HTML personnalise pour stocker l'ID |
+| `dataset.delete` | Recupere la valeur de `data-delete` en JavaScript |
 
 ---
 
-### 7. `produits.html`
+### 8. `src/pages/produits.astro`
 
-**C'est quoi ?** La page de gestion des produits. Meme structure que la page clients mais adaptee aux produits.
+**C'est quoi ?** La page de gestion des produits. Permet d'ajouter, modifier et supprimer des produits.
 
-```html
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GestionPayeTonKawa - Produits</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/style.css">
-</head>
-<body class="bg-gray-50 text-gray-800">
-    <div class="flex h-screen">
+```astro
+---
+import Layout from '../layouts/Layout.astro';
+---
 
-        <!-- SIDEBAR -->
-        <aside class="w-64 bg-gray-900 text-white flex flex-col">
-            <div class="p-6 border-b border-gray-700">
-                <h1 class="text-xl font-bold">PayeTonKawa</h1>
-                <p class="text-gray-400 text-sm">Gestion</p>
+<Layout title="Produits" currentPage="produits">
+    <header class="bg-white border-b px-8 py-5 flex items-center justify-between">
+        <div>
+            <h2 class="text-2xl font-semibold">Produits</h2>
+            <p class="text-gray-500 text-sm mt-1">Catalogue des cafes</p>
+        </div>
+        <button id="btn-ajouter" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition">
+            + Ajouter un produit
+        </button>
+    </header>
+
+    <div class="p-8">
+        <div class="bg-white rounded-xl shadow-sm border">
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50 text-left text-sm text-gray-500">
+                        <tr>
+                            <th class="px-6 py-3">ID</th>
+                            <th class="px-6 py-3">Nom</th>
+                            <th class="px-6 py-3">Prix</th>
+                            <th class="px-6 py-3">Stock</th>
+                            <th class="px-6 py-3">Origine</th>
+                            <th class="px-6 py-3">Poids</th>
+                            <th class="px-6 py-3">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-produits" class="divide-y text-sm">
+                        <tr>
+                            <td colspan="7" class="px-6 py-8 text-center text-gray-400">Chargement...</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
-            <nav class="flex-1 p-4 space-y-1">
-                <a href="index.html" class="nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white">
-                    <span>Dashboard</span>
-                </a>
-                <a href="clients.html" class="nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white">
-                    <span>Clients</span>
-                </a>
-                <a href="produits.html" class="nav-link active flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white">
-                    <span>Produits</span>
-                </a>
-                <a href="commandes.html" class="nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white">
-                    <span>Commandes</span>
-                </a>
-            </nav>
-            <div class="p-4 border-t border-gray-700 text-gray-500 text-xs">
-                v1.0.0
-            </div>
-        </aside>
-
-        <!-- CONTENU PRINCIPAL -->
-        <main class="flex-1 overflow-y-auto">
-            <header class="bg-white border-b px-8 py-5 flex items-center justify-between">
-                <div>
-                    <h2 class="text-2xl font-semibold">Produits</h2>
-                    <p class="text-gray-500 text-sm mt-1">Catalogue des cafes</p>
-                </div>
-                <button onclick="openModal()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition">
-                    + Ajouter un produit
-                </button>
-            </header>
-
-            <div class="p-8">
-                <div class="bg-white rounded-xl shadow-sm border">
-                    <div class="overflow-x-auto">
-                        <table class="w-full">
-                            <thead class="bg-gray-50 text-left text-sm text-gray-500">
-                                <tr>
-                                    <th class="px-6 py-3">ID</th>
-                                    <th class="px-6 py-3">Nom</th>
-                                    <th class="px-6 py-3">Prix</th>
-                                    <th class="px-6 py-3">Stock</th>
-                                    <th class="px-6 py-3">Origine</th>
-                                    <th class="px-6 py-3">Poids</th>
-                                    <th class="px-6 py-3">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="table-produits" class="divide-y text-sm">
-                                <!-- Rempli par JavaScript -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </main>
+        </div>
     </div>
 
-    <!-- MODALE : Formulaire d'ajout -->
+    <!-- MODALE : Formulaire d'ajout/modification -->
     <div id="modal" class="modal-backdrop fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
         <div class="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 p-6">
             <div class="flex items-center justify-between mb-6">
                 <h3 id="modal-title" class="text-lg font-semibold">Nouveau produit</h3>
-                <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+                <button id="btn-close-modal" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
             </div>
             <form id="form-produit" class="space-y-4">
                 <input type="hidden" id="input-id">
@@ -799,241 +913,202 @@ async function supprimerClient(id) {
                     <input type="text" id="input-origine" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" placeholder="Bresil, Colombie, Ethiopie...">
                 </div>
                 <div class="flex justify-end gap-3 pt-4">
-                    <button type="button" onclick="closeModal()" class="px-4 py-2 text-sm text-gray-600 border rounded-lg hover:bg-gray-50 transition">Annuler</button>
+                    <button type="button" id="btn-annuler" class="px-4 py-2 text-sm text-gray-600 border rounded-lg hover:bg-gray-50 transition">Annuler</button>
                     <button type="submit" class="px-4 py-2 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition">Enregistrer</button>
                 </div>
             </form>
         </div>
     </div>
+</Layout>
 
-    <script src="js/api.js"></script>
-    <script src="js/produits.js"></script>
-</body>
-</html>
-```
+<script>
+    import { getProduits, getProduit, createProduit, updateProduit, deleteProduit, type ProduitCreate } from '../lib/api';
 
-**Colonnes du tableau :**
+    let editMode = false;
 
-| Colonne | Donnee |
-|---------|--------|
-| ID | Numero du produit |
-| Nom | Nom du cafe |
-| Prix | Prix en euros |
-| Stock | Quantite en reserve |
-| Origine | Pays d'origine |
-| Poids | Poids en kg |
-| Actions | Boutons Modifier et Supprimer |
+    const modal = document.getElementById("modal")!;
+    const modalTitle = document.getElementById("modal-title")!;
+    const btnAjouter = document.getElementById("btn-ajouter")!;
+    const btnClose = document.getElementById("btn-close-modal")!;
+    const btnAnnuler = document.getElementById("btn-annuler")!;
+    const form = document.getElementById("form-produit") as HTMLFormElement;
+    const tbody = document.getElementById("table-produits")!;
 
----
+    const inputId = document.getElementById("input-id") as HTMLInputElement;
+    const inputNom = document.getElementById("input-nom") as HTMLInputElement;
+    const inputDescription = document.getElementById("input-description") as HTMLTextAreaElement;
+    const inputPrix = document.getElementById("input-prix") as HTMLInputElement;
+    const inputStock = document.getElementById("input-stock") as HTMLInputElement;
+    const inputPoids = document.getElementById("input-poids") as HTMLInputElement;
+    const inputOrigine = document.getElementById("input-origine") as HTMLInputElement;
 
-### 8. `js/produits.js`
-
-**C'est quoi ?** Le code JavaScript de la page produits. Gere la liste, l'ajout, la modification et la suppression.
-
-```javascript
-var editMode = false;
-
-document.addEventListener("DOMContentLoaded", function () {
-    loadProduits();
-});
-
-// Charger et afficher les produits
-async function loadProduits() {
-    var tbody = document.getElementById("table-produits");
-
-    try {
-        var produits = await getProduits();
-
-        if (produits.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="px-6 py-8 text-center text-gray-400">Aucun produit en catalogue</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = produits.map(function (p) {
-            return '<tr class="hover:bg-gray-50">'
-                + '<td class="px-6 py-3 font-medium">#' + p.id + '</td>'
-                + '<td class="px-6 py-3">' + p.nom + '</td>'
-                + '<td class="px-6 py-3 font-medium">' + p.prix.toFixed(2) + ' EUR</td>'
-                + '<td class="px-6 py-3">' + p.stock + '</td>'
-                + '<td class="px-6 py-3">' + (p.origine || '-') + '</td>'
-                + '<td class="px-6 py-3">' + p.poids_kg + ' kg</td>'
-                + '<td class="px-6 py-3 space-x-2">'
-                + '  <button onclick="modifierProduit(' + p.id + ')" class="text-indigo-600 hover:text-indigo-800 text-sm font-medium">Modifier</button>'
-                + '  <button onclick="supprimerProduit(' + p.id + ')" class="text-red-600 hover:text-red-800 text-sm font-medium">Supprimer</button>'
-                + '</td>'
-                + '</tr>';
-        }).join("");
-
-    } catch (e) {
-        tbody.innerHTML = '<tr><td colspan="7" class="px-6 py-8 text-center text-red-500">Erreur de connexion a l\'API</td></tr>';
-    }
-}
-
-// Ouvrir la modale (mode ajout)
-function openModal() {
-    editMode = false;
-    document.getElementById("modal-title").textContent = "Nouveau produit";
-    document.getElementById("input-id").value = "";
-    document.getElementById("form-produit").reset();
-    document.getElementById("input-stock").value = "0";
-    document.getElementById("input-poids").value = "1.0";
-    document.getElementById("modal").classList.remove("hidden");
-    document.getElementById("modal").classList.add("flex");
-}
-
-// Fermer la modale
-function closeModal() {
-    document.getElementById("modal").classList.add("hidden");
-    document.getElementById("modal").classList.remove("flex");
-}
-
-// Ouvrir la modale en mode modification
-async function modifierProduit(id) {
-    editMode = true;
-    var p = await getProduit(id);
-
-    document.getElementById("modal-title").textContent = "Modifier le produit";
-    document.getElementById("input-id").value = p.id;
-    document.getElementById("input-nom").value = p.nom;
-    document.getElementById("input-description").value = p.description || "";
-    document.getElementById("input-prix").value = p.prix;
-    document.getElementById("input-stock").value = p.stock;
-    document.getElementById("input-poids").value = p.poids_kg;
-    document.getElementById("input-origine").value = p.origine || "";
-
-    document.getElementById("modal").classList.remove("hidden");
-    document.getElementById("modal").classList.add("flex");
-}
-
-// Envoyer le formulaire (ajout ou modification)
-document.getElementById("form-produit").addEventListener("submit", async function (e) {
-    e.preventDefault();
-
-    var data = {
-        nom: document.getElementById("input-nom").value,
-        description: document.getElementById("input-description").value || null,
-        prix: parseFloat(document.getElementById("input-prix").value),
-        stock: parseInt(document.getElementById("input-stock").value),
-        poids_kg: parseFloat(document.getElementById("input-poids").value),
-        origine: document.getElementById("input-origine").value || null
-    };
-
-    try {
-        if (editMode) {
-            var id = document.getElementById("input-id").value;
-            await updateProduit(id, data);
-        } else {
-            await createProduit(data);
-        }
-        closeModal();
-        loadProduits();
-    } catch (e) {
-        alert("Erreur lors de l'enregistrement");
-    }
-});
-
-// Supprimer un produit
-async function supprimerProduit(id) {
-    if (confirm("Voulez-vous vraiment supprimer ce produit ?")) {
+    // Charger les produits
+    async function loadProduits() {
         try {
-            await deleteProduit(id);
-            loadProduits();
-        } catch (e) {
-            alert("Erreur lors de la suppression");
+            const produits = await getProduits();
+
+            if (produits.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="px-6 py-8 text-center text-gray-400">Aucun produit en catalogue</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = produits.map(p => `
+                <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-3 font-medium">#${p.id}</td>
+                    <td class="px-6 py-3">${p.nom}</td>
+                    <td class="px-6 py-3 font-medium">${p.prix.toFixed(2)} EUR</td>
+                    <td class="px-6 py-3">${p.stock}</td>
+                    <td class="px-6 py-3">${p.origine || '-'}</td>
+                    <td class="px-6 py-3">${p.poids_kg} kg</td>
+                    <td class="px-6 py-3 space-x-2">
+                        <button data-edit="${p.id}" class="text-indigo-600 hover:text-indigo-800 text-sm font-medium">Modifier</button>
+                        <button data-delete="${p.id}" class="text-red-600 hover:text-red-800 text-sm font-medium">Supprimer</button>
+                    </td>
+                </tr>
+            `).join("");
+
+            // Event listeners pour modifier
+            document.querySelectorAll('[data-edit]').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const id = parseInt((e.target as HTMLElement).dataset.edit!);
+                    await openEditModal(id);
+                });
+            });
+
+            // Event listeners pour supprimer
+            document.querySelectorAll('[data-delete]').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const id = (e.target as HTMLElement).dataset.delete!;
+                    if (confirm("Voulez-vous vraiment supprimer ce produit ?")) {
+                        try {
+                            await deleteProduit(parseInt(id));
+                            loadProduits();
+                        } catch {
+                            alert("Erreur lors de la suppression");
+                        }
+                    }
+                });
+            });
+
+        } catch {
+            tbody.innerHTML = '<tr><td colspan="7" class="px-6 py-8 text-center text-red-500">Erreur de connexion a l\'API</td></tr>';
         }
     }
-}
+
+    // Ouvrir modale en mode ajout
+    function openModal() {
+        editMode = false;
+        modalTitle.textContent = "Nouveau produit";
+        form.reset();
+        inputStock.value = "0";
+        inputPoids.value = "1.0";
+        modal.classList.remove("hidden");
+        modal.classList.add("flex");
+    }
+
+    // Ouvrir modale en mode modification
+    async function openEditModal(id: number) {
+        editMode = true;
+        modalTitle.textContent = "Modifier le produit";
+
+        const p = await getProduit(id);
+        inputId.value = String(p.id);
+        inputNom.value = p.nom;
+        inputDescription.value = p.description || "";
+        inputPrix.value = String(p.prix);
+        inputStock.value = String(p.stock);
+        inputPoids.value = String(p.poids_kg);
+        inputOrigine.value = p.origine || "";
+
+        modal.classList.remove("hidden");
+        modal.classList.add("flex");
+    }
+
+    function closeModal() {
+        modal.classList.add("hidden");
+        modal.classList.remove("flex");
+    }
+
+    btnAjouter.addEventListener('click', openModal);
+    btnClose.addEventListener('click', closeModal);
+    btnAnnuler.addEventListener('click', closeModal);
+
+    // Soumettre le formulaire
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const data: ProduitCreate = {
+            nom: inputNom.value,
+            description: inputDescription.value || undefined,
+            prix: parseFloat(inputPrix.value),
+            stock: parseInt(inputStock.value),
+            poids_kg: parseFloat(inputPoids.value),
+            origine: inputOrigine.value || undefined
+        };
+
+        try {
+            if (editMode) {
+                await updateProduit(parseInt(inputId.value), data);
+            } else {
+                await createProduit(data);
+            }
+            closeModal();
+            loadProduits();
+        } catch {
+            alert("Erreur lors de l'enregistrement");
+        }
+    });
+
+    // Charger au demarrage
+    loadProduits();
+</script>
 ```
-
-**Difference avec clients.js :** Ici on a un mode **modification** en plus. La meme modale sert pour l'ajout et la modification. La variable `editMode` permet de savoir si on cree ou si on modifie.
-
-| Concept | Explication |
-|---------|-------------|
-| `editMode` | `false` = on ajoute, `true` = on modifie |
-| `parseFloat(...)` | Convertit le texte du champ en nombre decimal |
-| `parseInt(...)` | Convertit le texte du champ en nombre entier |
-| `input-id` (hidden) | Champ cache qui stocke l'ID du produit en cours de modification |
 
 ---
 
-### 9. `commandes.html`
+### 9. `src/pages/commandes.astro`
 
 **C'est quoi ?** La page la plus complexe. Elle affiche les commandes et permet d'en creer (en choisissant un client et des produits).
 
-```html
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GestionPayeTonKawa - Commandes</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/style.css">
-</head>
-<body class="bg-gray-50 text-gray-800">
-    <div class="flex h-screen">
+```astro
+---
+import Layout from '../layouts/Layout.astro';
+---
 
-        <!-- SIDEBAR -->
-        <aside class="w-64 bg-gray-900 text-white flex flex-col">
-            <div class="p-6 border-b border-gray-700">
-                <h1 class="text-xl font-bold">PayeTonKawa</h1>
-                <p class="text-gray-400 text-sm">Gestion</p>
-            </div>
-            <nav class="flex-1 p-4 space-y-1">
-                <a href="index.html" class="nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white">
-                    <span>Dashboard</span>
-                </a>
-                <a href="clients.html" class="nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white">
-                    <span>Clients</span>
-                </a>
-                <a href="produits.html" class="nav-link flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white">
-                    <span>Produits</span>
-                </a>
-                <a href="commandes.html" class="nav-link active flex items-center gap-3 px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-800 hover:text-white">
-                    <span>Commandes</span>
-                </a>
-            </nav>
-            <div class="p-4 border-t border-gray-700 text-gray-500 text-xs">
-                v1.0.0
-            </div>
-        </aside>
+<Layout title="Commandes" currentPage="commandes">
+    <header class="bg-white border-b px-8 py-5 flex items-center justify-between">
+        <div>
+            <h2 class="text-2xl font-semibold">Commandes</h2>
+            <p class="text-gray-500 text-sm mt-1">Gestion des commandes</p>
+        </div>
+        <button id="btn-ajouter" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition">
+            + Nouvelle commande
+        </button>
+    </header>
 
-        <!-- CONTENU PRINCIPAL -->
-        <main class="flex-1 overflow-y-auto">
-            <header class="bg-white border-b px-8 py-5 flex items-center justify-between">
-                <div>
-                    <h2 class="text-2xl font-semibold">Commandes</h2>
-                    <p class="text-gray-500 text-sm mt-1">Gestion des commandes</p>
-                </div>
-                <button onclick="openModal()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition">
-                    + Nouvelle commande
-                </button>
-            </header>
-
-            <div class="p-8">
-                <div class="bg-white rounded-xl shadow-sm border">
-                    <div class="overflow-x-auto">
-                        <table class="w-full">
-                            <thead class="bg-gray-50 text-left text-sm text-gray-500">
-                                <tr>
-                                    <th class="px-6 py-3">ID</th>
-                                    <th class="px-6 py-3">Client ID</th>
-                                    <th class="px-6 py-3">Nb articles</th>
-                                    <th class="px-6 py-3">Total</th>
-                                    <th class="px-6 py-3">Statut</th>
-                                    <th class="px-6 py-3">Date</th>
-                                    <th class="px-6 py-3">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="table-commandes" class="divide-y text-sm">
-                                <!-- Rempli par JavaScript -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+    <div class="p-8">
+        <div class="bg-white rounded-xl shadow-sm border">
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50 text-left text-sm text-gray-500">
+                        <tr>
+                            <th class="px-6 py-3">ID</th>
+                            <th class="px-6 py-3">Client ID</th>
+                            <th class="px-6 py-3">Nb articles</th>
+                            <th class="px-6 py-3">Total</th>
+                            <th class="px-6 py-3">Statut</th>
+                            <th class="px-6 py-3">Date</th>
+                            <th class="px-6 py-3">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-commandes" class="divide-y text-sm">
+                        <tr>
+                            <td colspan="7" class="px-6 py-8 text-center text-gray-400">Chargement...</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
-        </main>
+        </div>
     </div>
 
     <!-- MODALE : Nouvelle commande -->
@@ -1041,10 +1116,9 @@ async function supprimerProduit(id) {
         <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 p-6">
             <div class="flex items-center justify-between mb-6">
                 <h3 class="text-lg font-semibold">Nouvelle commande</h3>
-                <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+                <button id="btn-close-modal" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
             </div>
             <form id="form-commande" class="space-y-4">
-                <!-- Choix du client -->
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Client</label>
                     <select id="input-client" required class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
@@ -1052,25 +1126,23 @@ async function supprimerProduit(id) {
                     </select>
                 </div>
 
-                <!-- Lignes de commande -->
                 <div>
                     <div class="flex items-center justify-between mb-2">
                         <label class="block text-sm font-medium text-gray-700">Articles</label>
-                        <button type="button" onclick="ajouterLigne()" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium">+ Ajouter un article</button>
+                        <button type="button" id="btn-ajouter-ligne" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium">+ Ajouter un article</button>
                     </div>
                     <div id="lignes-container" class="space-y-2">
                         <!-- Lignes ajoutees dynamiquement -->
                     </div>
                 </div>
 
-                <!-- Total -->
                 <div class="bg-gray-50 rounded-lg p-4 text-right">
                     <span class="text-gray-500">Total : </span>
                     <span id="total-commande" class="text-xl font-bold">0.00 EUR</span>
                 </div>
 
                 <div class="flex justify-end gap-3 pt-4">
-                    <button type="button" onclick="closeModal()" class="px-4 py-2 text-sm text-gray-600 border rounded-lg hover:bg-gray-50 transition">Annuler</button>
+                    <button type="button" id="btn-annuler" class="px-4 py-2 text-sm text-gray-600 border rounded-lg hover:bg-gray-50 transition">Annuler</button>
                     <button type="submit" class="px-4 py-2 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition">Valider la commande</button>
                 </div>
             </form>
@@ -1082,7 +1154,7 @@ async function supprimerProduit(id) {
         <div class="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6">
             <div class="flex items-center justify-between mb-6">
                 <h3 class="text-lg font-semibold">Changer le statut</h3>
-                <button onclick="closeModalStatut()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+                <button id="btn-close-statut" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
             </div>
             <form id="form-statut" class="space-y-4">
                 <input type="hidden" id="statut-commande-id">
@@ -1098,296 +1170,344 @@ async function supprimerProduit(id) {
                     </select>
                 </div>
                 <div class="flex justify-end gap-3 pt-4">
-                    <button type="button" onclick="closeModalStatut()" class="px-4 py-2 text-sm text-gray-600 border rounded-lg hover:bg-gray-50 transition">Annuler</button>
+                    <button type="button" id="btn-annuler-statut" class="px-4 py-2 text-sm text-gray-600 border rounded-lg hover:bg-gray-50 transition">Annuler</button>
                     <button type="submit" class="px-4 py-2 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition">Enregistrer</button>
                 </div>
             </form>
         </div>
     </div>
+</Layout>
 
-    <script src="js/api.js"></script>
-    <script src="js/commandes.js"></script>
-</body>
-</html>
-```
+<script>
+    import {
+        getClients, getProduits, getCommandes,
+        createCommande, updateCommande, deleteCommande,
+        type Produit, type LigneCommandeCreate
+    } from '../lib/api';
 
-**Les 2 modales :**
+    let produitsDisponibles: Produit[] = [];
 
-| Modale | Utilisation |
-|--------|-------------|
-| `#modal` | Creer une nouvelle commande (choisir client + ajouter des articles) |
-| `#modal-statut` | Changer le statut d'une commande existante |
+    const modal = document.getElementById("modal")!;
+    const modalStatut = document.getElementById("modal-statut")!;
+    const btnAjouter = document.getElementById("btn-ajouter")!;
+    const btnClose = document.getElementById("btn-close-modal")!;
+    const btnAnnuler = document.getElementById("btn-annuler")!;
+    const btnCloseStatut = document.getElementById("btn-close-statut")!;
+    const btnAnnulerStatut = document.getElementById("btn-annuler-statut")!;
+    const btnAjouterLigne = document.getElementById("btn-ajouter-ligne")!;
+    const form = document.getElementById("form-commande") as HTMLFormElement;
+    const formStatut = document.getElementById("form-statut") as HTMLFormElement;
+    const tbody = document.getElementById("table-commandes")!;
+    const inputClient = document.getElementById("input-client") as HTMLSelectElement;
+    const lignesContainer = document.getElementById("lignes-container")!;
+    const totalEl = document.getElementById("total-commande")!;
+    const inputStatut = document.getElementById("input-statut") as HTMLSelectElement;
+    const statutCommandeId = document.getElementById("statut-commande-id") as HTMLInputElement;
 
-**Elements specifiques :**
+    // Charger les commandes
+    async function loadCommandes() {
+        try {
+            const commandes = await getCommandes();
 
-| Element | Explication |
-|---------|-------------|
-| `<select id="input-client">` | Liste deroulante des clients (remplie par JS) |
-| `#lignes-container` | Zone ou on ajoute les articles dynamiquement |
-| `#total-commande` | Affiche le total calcule en temps reel |
-| Bouton "+ Ajouter un article" | Ajoute une nouvelle ligne (produit + quantite) |
+            if (commandes.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="px-6 py-8 text-center text-gray-400">Aucune commande</td></tr>';
+                return;
+            }
 
----
+            tbody.innerHTML = commandes.map(c => {
+                const date = new Date(c.date_commande).toLocaleDateString("fr-FR");
+                const nbArticles = c.lignes.length;
+                return `
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-6 py-3 font-medium">#${c.id}</td>
+                        <td class="px-6 py-3">${c.client_id}</td>
+                        <td class="px-6 py-3">${nbArticles}</td>
+                        <td class="px-6 py-3 font-medium">${c.total.toFixed(2)} EUR</td>
+                        <td class="px-6 py-3"><span class="badge badge-${c.statut}">${c.statut}</span></td>
+                        <td class="px-6 py-3 text-gray-500">${date}</td>
+                        <td class="px-6 py-3 space-x-2">
+                            <button data-statut="${c.id}" data-current="${c.statut}" class="text-indigo-600 hover:text-indigo-800 text-sm font-medium">Statut</button>
+                            <button data-delete="${c.id}" class="text-red-600 hover:text-red-800 text-sm font-medium">Supprimer</button>
+                        </td>
+                    </tr>
+                `;
+            }).join("");
 
-### 10. `js/commandes.js`
+            // Event listeners pour statut
+            document.querySelectorAll('[data-statut]').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const target = e.target as HTMLElement;
+                    const id = target.dataset.statut!;
+                    const current = target.dataset.current!;
+                    openStatutModal(parseInt(id), current);
+                });
+            });
 
-**C'est quoi ?** Le code JavaScript le plus complexe. Il gere la creation de commandes avec plusieurs articles, le changement de statut et la suppression.
+            // Event listeners pour supprimer
+            document.querySelectorAll('[data-delete]').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const id = (e.target as HTMLElement).dataset.delete!;
+                    if (confirm("Voulez-vous vraiment supprimer cette commande ?")) {
+                        try {
+                            await deleteCommande(parseInt(id));
+                            loadCommandes();
+                        } catch {
+                            alert("Erreur lors de la suppression");
+                        }
+                    }
+                });
+            });
 
-```javascript
-var produitsDisponibles = [];
+        } catch {
+            tbody.innerHTML = '<tr><td colspan="7" class="px-6 py-8 text-center text-red-500">Erreur de connexion a l\'API</td></tr>';
+        }
+    }
 
-document.addEventListener("DOMContentLoaded", function () {
-    loadCommandes();
-});
-
-// Charger et afficher les commandes
-async function loadCommandes() {
-    var tbody = document.getElementById("table-commandes");
-
-    try {
-        var commandes = await getCommandes();
-
-        if (commandes.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="px-6 py-8 text-center text-gray-400">Aucune commande</td></tr>';
+    // Ouvrir modale nouvelle commande
+    async function openModal() {
+        // Charger les clients
+        inputClient.innerHTML = '<option value="">-- Choisir un client --</option>';
+        try {
+            const clients = await getClients();
+            clients.forEach(c => {
+                inputClient.innerHTML += `<option value="${c.id}">${c.nom} ${c.prenom} (${c.email})</option>`;
+            });
+        } catch {
+            alert("Impossible de charger les clients");
             return;
         }
 
-        tbody.innerHTML = commandes.map(function (c) {
-            var date = new Date(c.date_commande).toLocaleDateString("fr-FR");
-            var nbArticles = c.lignes.length;
-
-            return '<tr class="hover:bg-gray-50">'
-                + '<td class="px-6 py-3 font-medium">#' + c.id + '</td>'
-                + '<td class="px-6 py-3">' + c.client_id + '</td>'
-                + '<td class="px-6 py-3">' + nbArticles + '</td>'
-                + '<td class="px-6 py-3 font-medium">' + c.total.toFixed(2) + ' EUR</td>'
-                + '<td class="px-6 py-3"><span class="badge badge-' + c.statut + '">' + c.statut + '</span></td>'
-                + '<td class="px-6 py-3 text-gray-500">' + date + '</td>'
-                + '<td class="px-6 py-3 space-x-2">'
-                + '  <button onclick="ouvrirStatut(' + c.id + ', \'' + c.statut + '\')" class="text-indigo-600 hover:text-indigo-800 text-sm font-medium">Statut</button>'
-                + '  <button onclick="supprimerCommande(' + c.id + ')" class="text-red-600 hover:text-red-800 text-sm font-medium">Supprimer</button>'
-                + '</td>'
-                + '</tr>';
-        }).join("");
-
-    } catch (e) {
-        tbody.innerHTML = '<tr><td colspan="7" class="px-6 py-8 text-center text-red-500">Erreur de connexion a l\'API</td></tr>';
-    }
-}
-
-// --- MODALE NOUVELLE COMMANDE ---
-
-async function openModal() {
-    // Charger la liste des clients dans le select
-    var selectClient = document.getElementById("input-client");
-    selectClient.innerHTML = '<option value="">-- Choisir un client --</option>';
-
-    try {
-        var clients = await getClients();
-        clients.forEach(function (c) {
-            selectClient.innerHTML += '<option value="' + c.id + '">' + c.nom + ' ' + c.prenom + ' (' + c.email + ')</option>';
-        });
-    } catch (e) {
-        alert("Impossible de charger les clients");
-        return;
-    }
-
-    // Charger la liste des produits
-    try {
-        produitsDisponibles = await getProduits();
-    } catch (e) {
-        alert("Impossible de charger les produits");
-        return;
-    }
-
-    // Vider les lignes et en ajouter une par defaut
-    document.getElementById("lignes-container").innerHTML = "";
-    ajouterLigne();
-
-    document.getElementById("total-commande").textContent = "0.00 EUR";
-    document.getElementById("modal").classList.remove("hidden");
-    document.getElementById("modal").classList.add("flex");
-}
-
-function closeModal() {
-    document.getElementById("modal").classList.add("hidden");
-    document.getElementById("modal").classList.remove("flex");
-}
-
-// Ajouter une ligne d'article dans le formulaire
-function ajouterLigne() {
-    var container = document.getElementById("lignes-container");
-    var index = container.children.length;
-
-    var options = produitsDisponibles.map(function (p) {
-        return '<option value="' + p.id + '" data-prix="' + p.prix + '">' + p.nom + ' - ' + p.prix.toFixed(2) + ' EUR</option>';
-    }).join("");
-
-    var ligneHTML = '<div class="flex gap-2 items-center ligne-commande">'
-        + '<select name="produit" class="flex-1 border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" onchange="calculerTotal()">'
-        + '<option value="">-- Produit --</option>'
-        + options
-        + '</select>'
-        + '<input type="number" name="quantite" value="1" min="1" class="w-20 border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" onchange="calculerTotal()" oninput="calculerTotal()">'
-        + '<button type="button" onclick="supprimerLigne(this)" class="text-red-500 hover:text-red-700 text-lg font-bold px-2">&times;</button>'
-        + '</div>';
-
-    container.innerHTML += ligneHTML;
-}
-
-// Supprimer une ligne d'article
-function supprimerLigne(btn) {
-    btn.parentElement.remove();
-    calculerTotal();
-}
-
-// Calculer le total en temps reel
-function calculerTotal() {
-    var lignes = document.querySelectorAll(".ligne-commande");
-    var total = 0;
-
-    lignes.forEach(function (ligne) {
-        var select = ligne.querySelector('select[name="produit"]');
-        var qte = parseInt(ligne.querySelector('input[name="quantite"]').value) || 0;
-        var option = select.options[select.selectedIndex];
-
-        if (option && option.dataset.prix) {
-            total += parseFloat(option.dataset.prix) * qte;
-        }
-    });
-
-    document.getElementById("total-commande").textContent = total.toFixed(2) + " EUR";
-}
-
-// Envoyer le formulaire de commande
-document.getElementById("form-commande").addEventListener("submit", async function (e) {
-    e.preventDefault();
-
-    var clientId = parseInt(document.getElementById("input-client").value);
-    if (!clientId) {
-        alert("Veuillez choisir un client");
-        return;
-    }
-
-    var lignes = [];
-    var lignesHTML = document.querySelectorAll(".ligne-commande");
-
-    lignesHTML.forEach(function (ligne) {
-        var select = ligne.querySelector('select[name="produit"]');
-        var qte = parseInt(ligne.querySelector('input[name="quantite"]').value);
-        var option = select.options[select.selectedIndex];
-
-        if (select.value && qte > 0 && option.dataset.prix) {
-            lignes.push({
-                produit_id: parseInt(select.value),
-                quantite: qte,
-                prix_unitaire: parseFloat(option.dataset.prix)
-            });
-        }
-    });
-
-    if (lignes.length === 0) {
-        alert("Ajoutez au moins un article");
-        return;
-    }
-
-    var data = {
-        client_id: clientId,
-        lignes: lignes
-    };
-
-    try {
-        await createCommande(data);
-        closeModal();
-        loadCommandes();
-    } catch (e) {
-        alert("Erreur lors de la creation de la commande");
-    }
-});
-
-// --- MODALE STATUT ---
-
-function ouvrirStatut(id, statutActuel) {
-    document.getElementById("statut-commande-id").value = id;
-    document.getElementById("input-statut").value = statutActuel;
-    document.getElementById("modal-statut").classList.remove("hidden");
-    document.getElementById("modal-statut").classList.add("flex");
-}
-
-function closeModalStatut() {
-    document.getElementById("modal-statut").classList.add("hidden");
-    document.getElementById("modal-statut").classList.remove("flex");
-}
-
-document.getElementById("form-statut").addEventListener("submit", async function (e) {
-    e.preventDefault();
-
-    var id = document.getElementById("statut-commande-id").value;
-    var statut = document.getElementById("input-statut").value;
-
-    try {
-        await updateCommande(id, { statut: statut });
-        closeModalStatut();
-        loadCommandes();
-    } catch (e) {
-        alert("Erreur lors du changement de statut");
-    }
-});
-
-// --- SUPPRESSION ---
-
-async function supprimerCommande(id) {
-    if (confirm("Voulez-vous vraiment supprimer cette commande ?")) {
+        // Charger les produits
         try {
-            await deleteCommande(id);
-            loadCommandes();
-        } catch (e) {
-            alert("Erreur lors de la suppression");
+            produitsDisponibles = await getProduits();
+        } catch {
+            alert("Impossible de charger les produits");
+            return;
         }
+
+        lignesContainer.innerHTML = "";
+        ajouterLigne();
+        totalEl.textContent = "0.00 EUR";
+
+        modal.classList.remove("hidden");
+        modal.classList.add("flex");
     }
-}
+
+    function closeModal() {
+        modal.classList.add("hidden");
+        modal.classList.remove("flex");
+    }
+
+    // Ajouter une ligne d'article
+    function ajouterLigne() {
+        const options = produitsDisponibles.map(p =>
+            `<option value="${p.id}" data-prix="${p.prix}">${p.nom} - ${p.prix.toFixed(2)} EUR</option>`
+        ).join("");
+
+        const ligneHTML = `
+            <div class="flex gap-2 items-center ligne-commande">
+                <select name="produit" class="flex-1 border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                    <option value="">-- Produit --</option>
+                    ${options}
+                </select>
+                <input type="number" name="quantite" value="1" min="1" class="w-20 border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                <button type="button" class="btn-supprimer-ligne text-red-500 hover:text-red-700 text-lg font-bold px-2">&times;</button>
+            </div>
+        `;
+
+        lignesContainer.insertAdjacentHTML('beforeend', ligneHTML);
+
+        // Event listeners pour la nouvelle ligne
+        const nouvelleLigne = lignesContainer.lastElementChild!;
+        nouvelleLigne.querySelector('select')!.addEventListener('change', calculerTotal);
+        nouvelleLigne.querySelector('input')!.addEventListener('input', calculerTotal);
+        nouvelleLigne.querySelector('.btn-supprimer-ligne')!.addEventListener('click', (e) => {
+            (e.target as HTMLElement).closest('.ligne-commande')!.remove();
+            calculerTotal();
+        });
+    }
+
+    // Calculer le total
+    function calculerTotal() {
+        const lignes = document.querySelectorAll('.ligne-commande');
+        let total = 0;
+
+        lignes.forEach(ligne => {
+            const select = ligne.querySelector('select[name="produit"]') as HTMLSelectElement;
+            const qteInput = ligne.querySelector('input[name="quantite"]') as HTMLInputElement;
+            const qte = parseInt(qteInput.value) || 0;
+            const option = select.options[select.selectedIndex];
+
+            if (option && option.dataset.prix) {
+                total += parseFloat(option.dataset.prix) * qte;
+            }
+        });
+
+        totalEl.textContent = total.toFixed(2) + " EUR";
+    }
+
+    btnAjouter.addEventListener('click', openModal);
+    btnClose.addEventListener('click', closeModal);
+    btnAnnuler.addEventListener('click', closeModal);
+    btnAjouterLigne.addEventListener('click', ajouterLigne);
+
+    // Soumettre le formulaire de commande
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const clientId = parseInt(inputClient.value);
+        if (!clientId) {
+            alert("Veuillez choisir un client");
+            return;
+        }
+
+        const lignes: LigneCommandeCreate[] = [];
+        document.querySelectorAll('.ligne-commande').forEach(ligne => {
+            const select = ligne.querySelector('select[name="produit"]') as HTMLSelectElement;
+            const qteInput = ligne.querySelector('input[name="quantite"]') as HTMLInputElement;
+            const qte = parseInt(qteInput.value);
+            const option = select.options[select.selectedIndex];
+
+            if (select.value && qte > 0 && option.dataset.prix) {
+                lignes.push({
+                    produit_id: parseInt(select.value),
+                    quantite: qte,
+                    prix_unitaire: parseFloat(option.dataset.prix)
+                });
+            }
+        });
+
+        if (lignes.length === 0) {
+            alert("Ajoutez au moins un article");
+            return;
+        }
+
+        try {
+            await createCommande({ client_id: clientId, lignes });
+            closeModal();
+            loadCommandes();
+        } catch {
+            alert("Erreur lors de la creation de la commande");
+        }
+    });
+
+    // Modale statut
+    function openStatutModal(id: number, currentStatut: string) {
+        statutCommandeId.value = String(id);
+        inputStatut.value = currentStatut;
+        modalStatut.classList.remove("hidden");
+        modalStatut.classList.add("flex");
+    }
+
+    function closeStatutModal() {
+        modalStatut.classList.add("hidden");
+        modalStatut.classList.remove("flex");
+    }
+
+    btnCloseStatut.addEventListener('click', closeStatutModal);
+    btnAnnulerStatut.addEventListener('click', closeStatutModal);
+
+    formStatut.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const id = parseInt(statutCommandeId.value);
+        const statut = inputStatut.value;
+
+        try {
+            await updateCommande(id, { statut });
+            closeStatutModal();
+            loadCommandes();
+        } catch {
+            alert("Erreur lors du changement de statut");
+        }
+    });
+
+    // Charger au demarrage
+    loadCommandes();
+</script>
 ```
-
-**Les fonctions specifiques aux commandes :**
-
-| Fonction | Ce qu'elle fait |
-|----------|----------------|
-| `openModal()` | Charge la liste des clients ET des produits dans les listes deroulantes |
-| `ajouterLigne()` | Ajoute une nouvelle ligne (choix produit + quantite) dans le formulaire |
-| `supprimerLigne()` | Retire une ligne d'article du formulaire |
-| `calculerTotal()` | Recalcule le total a chaque changement (produit ou quantite) |
-| `ouvrirStatut(id, statut)` | Ouvre la modale de changement de statut |
-| `supprimerCommande(id)` | Supprime la commande apres confirmation |
-
-**Concepts nouveaux :**
-
-| Concept | Explication |
-|---------|-------------|
-| `data-prix` | Attribut HTML personnalise qui stocke le prix dans l'option du select |
-| `option.dataset.prix` | Recupere la valeur de `data-prix` en JavaScript |
-| `document.querySelectorAll(...)` | Selectionne tous les elements qui correspondent au selecteur |
-| `.forEach(function(x) {...})` | Execute une action sur chaque element de la liste |
 
 ---
 
-## COMMENT LANCER LE FRONTEND
+## COMMENT LANCER LE PROJET
 
-Le frontend est compose de fichiers HTML statiques. Il suffit d'ouvrir le fichier dans le navigateur :
+### 1. Installer les dependances (une seule fois)
 
 ```bash
-# Option 1 : Ouvrir directement dans le navigateur
-xdg-open /home/david/dev/Mspr/payetonkawa/gestionpayetonkawa/index.html
-
-# Option 2 : Utiliser un mini serveur Python (recommande)
-cd /home/david/dev/Mspr/payetonkawa/gestionpayetonkawa
-python3 -m http.server 3000
-# Puis ouvrir http://localhost:3000 dans le navigateur
+cd /Users/faouzdon/Desktop/payetonkawa/gestionpayetonkawa
+npm install
 ```
 
-L'option 2 (serveur Python) est recommandee car certains navigateurs bloquent les requetes `fetch` depuis un fichier local (`file://`).
+### 2. Lancer en mode developpement
+
+```bash
+npm run dev
+```
+
+Astro demarre sur **http://localhost:4321**. Ouvre cette URL dans ton navigateur.
+
+### 3. Build pour la production (optionnel)
+
+```bash
+npm run build
+```
+
+Les fichiers statiques sont generes dans le dossier `dist/`.
 
 ---
 
 ## RAPPEL IMPORTANT : CORS
 
 Avant de lancer le frontend, il faut ajouter le CORS dans les 3 APIs (voir section "AVANT DE COMMENCER" en haut de ce fichier). Sans ca, le navigateur bloquera toutes les requetes vers les APIs.
+
+---
+
+## RESUME DES COMMANDES
+
+```bash
+# 1. Creer le projet Astro
+cd /Users/faouzdon/Desktop/payetonkawa/gestionpayetonkawa
+npm create astro@latest .
+
+# 2. Installer Tailwind
+npx astro add tailwind
+
+# 3. Creer les dossiers
+mkdir -p src/layouts src/components src/lib src/styles
+
+# 4. Creer tous les fichiers (voir sections ci-dessus)
+
+# 5. Lancer le serveur de dev
+npm run dev
+
+# Le site sera accessible sur http://localhost:4321
+```
+
+---
+
+## STRUCTURE FINALE
+
+```
+gestionpayetonkawa/
+├── astro.config.mjs
+├── tailwind.config.mjs
+├── tsconfig.json
+├── package.json
+├── package-lock.json
+├── node_modules/
+├── src/
+│   ├── layouts/
+│   │   └── Layout.astro
+│   ├── components/
+│   │   ├── Sidebar.astro
+│   │   └── StatCard.astro
+│   ├── lib/
+│   │   └── api.ts
+│   ├── pages/
+│   │   ├── index.astro
+│   │   ├── clients.astro
+│   │   ├── produits.astro
+│   │   └── commandes.astro
+│   └── styles/
+│       └── global.css
+└── gestion.md
+```
