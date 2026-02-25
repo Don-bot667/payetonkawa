@@ -64,7 +64,7 @@ C'est comme un dictionnaire : des **cles** (`"nom"`) associees a des **valeurs**
 ---
 
 ## 2. Les outils utilises dans ce projet
-
+irection 301 c est quoi
 ### Python
 
 Le langage de programmation utilise pour ecrire l'API.
@@ -144,7 +144,7 @@ C'est le principe de **separation des responsabilites** : chaque fichier a UN ro
 ### 4.1 `.env` - Les variables d'environnement
 
 ```
-DATABASE_URL=postgresql://postgres:postgres@localhost:5436/clients_db
+DATABASE_URL=postgresql://postgres:postgres@localhost:5433/clients_db
 RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
 API_KEY=secret_key_123
 ```
@@ -154,7 +154,7 @@ Ce fichier contient les informations **sensibles** (mots de passe, URLs de conne
 Decomposition de `DATABASE_URL` :
 
 ```
-postgresql://postgres:postgres@localhost:5436/clients_db
+postgresql://postgres:postgres@localhost:5433/clients_db
 |            |        |        |         |    |
 |            |        |        |         |    +-- nom de la base de donnees
 |            |        |        |         +------- port
@@ -526,10 +526,10 @@ Tu dois voir `payetonkawa-db-clients-1` avec le statut `Up`.
 Le fichier `api-clients/.env` doit contenir :
 
 ```
-DATABASE_URL=postgresql://postgres:postgres@localhost:5436/clients_db
+DATABASE_URL=postgresql://postgres:postgres@localhost:5433/clients_db
 ```
 
-> **Attention** : `localhost:5436` c'est pour lancer l'API **en local** (sur ton PC).
+> **Attention** : `localhost:5433` c'est pour lancer l'API **en local** (sur ton PC).
 > Si tu lances via Docker Compose, il faut remettre `db-clients:5432`.
 
 ### Etape 3 : Creer l'environnement virtuel (une seule fois)
@@ -695,7 +695,7 @@ Parametres de connexion :
 | Parametre | Valeur       |
 |-----------|-------------|
 | Host      | `localhost`  |
-| Port      | `5436`       |
+| Port      | `5433`       |
 | Database  | `clients_db` |
 | User      | `postgres`   |
 | Password  | `postgres`   |
@@ -736,6 +736,6 @@ Parametres de connexion :
 | **Decorateur (@)**   | En Python, une annotation au-dessus d'une fonction qui lui ajoute un comportement |
 | **Dependance**       | Librairie externe dont le projet a besoin pour fonctionner       |
 | **Environnement virtuel (venv)** | Un dossier isole contenant les librairies Python du projet |
-| **Port**             | Un numero qui identifie un service sur une machine (8000 pour l'API, 5436 pour la BDD) |
+| **Port**             | Un numero qui identifie un service sur une machine (8000 pour l'API, 5433 pour la BDD) |
 | **Session (BDD)**    | Une connexion temporaire a la base de donnees                    |
 | **Commit**           | Valider/sauvegarder les changements dans la BDD                  |
