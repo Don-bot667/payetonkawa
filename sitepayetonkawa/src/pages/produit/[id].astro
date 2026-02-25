@@ -50,7 +50,9 @@ const { id } = Astro.params;
 
         try {
             const p = await getProduit(id);
-            const image = placeholderImages[id % placeholderImages.length];
+            const image = p.image_url
+                ? 'http://localhost:8001' + p.image_url
+                : placeholderImages[id % placeholderImages.length];
 
             container.innerHTML = `
                 <!-- Image -->

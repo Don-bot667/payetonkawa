@@ -94,6 +94,14 @@ import Layout from '../layouts/Layout.astro';
                     <label class="block text-sm font-medium text-gray-700 mb-2">Origine</label>
                     <input type="text" id="input-origine" class="input" placeholder="Bresil, Colombie, Ethiopie...">
                 </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Photo du produit</label>
+                    <div id="image-preview-container" class="hidden mb-2">
+                        <img id="image-preview" src="" alt="Apercu" class="w-20 h-20 object-cover rounded-lg border border-gray-200">
+                    </div>
+                    <input type="file" id="input-image" accept="image/jpeg,image/png,image/webp" class="block w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100">
+                    <p class="text-xs text-gray-400 mt-1">Formats acceptes : JPG, PNG, WEBP</p>
+                </div>
                 <div class="flex justify-end gap-3 pt-4 border-t border-gray-100">
                     <button type="button" id="btn-annuler" class="btn-secondary">Annuler</button>
                     <button type="submit" class="btn-primary bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800">
@@ -109,7 +117,7 @@ import Layout from '../layouts/Layout.astro';
 </Layout>
 
 <script>
-    import { getProduits, getProduit, createProduit, updateProduit, deleteProduit, type ProduitCreate } from '../lib/api';
+    import { getProduits, getProduit, createProduit, updateProduit, deleteProduit, uploadProductImage, type ProduitCreate } from '../lib/api';
 
     let editMode = false;
 
@@ -128,6 +136,20 @@ import Layout from '../layouts/Layout.astro';
     const inputStock = document.getElementById("input-stock") as HTMLInputElement;
     const inputPoids = document.getElementById("input-poids") as HTMLInputElement;
     const inputOrigine = document.getElementById("input-origine") as HTMLInputElement;
+    const inputImage = document.getElementById("input-image") as HTMLInputElement;
+    const imagePreview = document.getElementById("image-preview") as HTMLImageElement;
+    const imagePreviewContainer = document.getElementById("image-preview-container")!;
+
+    // Apercu de l'image selectionnee
+    inputImage.addEventListener("change", () => {
+        const file = inputImage.files?.[0];
+        if (file) {
+            imagePreview.src = URL.createObjectURL(file);
+            imagePreviewContainer.classList.remove("hidden");
+        } else {
+            imagePreviewContainer.classList.add("hidden");
+        }
+    });
 
     // Charger les produits
     async function loadProduits() {
@@ -154,10 +176,11 @@ import Layout from '../layouts/Layout.astro';
                 <tr class="hover:bg-gray-50/50 transition-colors group">
                     <td class="table-cell">
                         <div class="flex items-center gap-4">
-                            <div class="w-12 h-12 bg-gradient-to-br from-amber-100 to-amber-200 rounded-xl flex items-center justify-center">
-                                <svg class="w-6 h-6 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
-                                </svg>
+                            <div class="w-12 h-12 bg-gradient-to-br from-amber-100 to-amber-200 rounded-xl flex items-center justify-center overflow-hidden flex-shrink-0">
+                                ${p.image_url
+                                    ? `<img src="http://localhost:8001${p.image_url}" alt="${p.nom}" class="w-full h-full object-cover">`
+                                    : `<svg class="w-6 h-6 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>`
+                                }
                             </div>
                             <div>
                                 <p class="font-semibold text-gray-900">${p.nom}</p>
@@ -262,6 +285,8 @@ import Layout from '../layouts/Layout.astro';
     function closeModal() {
         modal.classList.add("hidden");
         modal.classList.remove("flex");
+        inputImage.value = "";
+        imagePreviewContainer.classList.add("hidden");
     }
 
     btnAjouter.addEventListener('click', openModal);
@@ -282,11 +307,19 @@ import Layout from '../layouts/Layout.astro';
         };
 
         try {
+            let savedProduit;
             if (editMode) {
-                await updateProduit(parseInt(inputId.value), data);
+                savedProduit = await updateProduit(parseInt(inputId.value), data);
             } else {
-                await createProduit(data);
+                savedProduit = await createProduit(data);
             }
+
+            // Uploader l'image si une est selectionnee
+            const imageFile = inputImage.files?.[0];
+            if (imageFile && savedProduit?.id) {
+                await uploadProductImage(savedProduit.id, imageFile);
+            }
+
             closeModal();
             loadProduits();
         } catch {

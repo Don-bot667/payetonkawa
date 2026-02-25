@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
 
@@ -7,9 +7,9 @@ from datetime import datetime
 
 # Ce qu'on envoie pour creer une ligne (dans une commande)
 class LigneCommandeCreate(BaseModel):
-    produit_id: int
-    quantite: int = 1
-    prix_unitaire: float
+    produit_id: int = Field(..., gt=0)
+    quantite: int = Field(1, ge=1, description="La quantité doit être >= 1")
+    prix_unitaire: float = Field(..., gt=0, description="Le prix doit être supérieur à 0")
 
 
 # Ce que l'API renvoie pour une ligne
@@ -28,8 +28,8 @@ class LigneCommandeResponse(BaseModel):
 
 # Ce qu'on envoie pour CREER une commande (POST)
 class CommandeCreate(BaseModel):
-    client_id: int
-    lignes: List[LigneCommandeCreate]
+    client_id: int = Field(..., gt=0)
+    lignes: List[LigneCommandeCreate] = Field(..., min_length=1, description="Au moins une ligne requise")
 
 
 # Ce qu'on envoie pour MODIFIER le statut (PUT)

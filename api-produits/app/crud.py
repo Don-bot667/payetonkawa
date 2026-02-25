@@ -34,6 +34,17 @@ def update_produit(db: Session, produit_id: int, produit: schemas.ProduitUpdate)
     return db_produit
 
 
+# UPDATE IMAGE - Enregistrer l'URL de l'image d'un produit
+def update_produit_image(db: Session, produit_id: int, image_url: str):
+    db_produit = get_produit(db, produit_id)
+    if not db_produit:
+        return None
+    db_produit.image_url = image_url
+    db.commit()
+    db.refresh(db_produit)
+    return db_produit
+
+
 # DELETE - Supprimer un produit
 def delete_produit(db: Session, produit_id: int):
     db_produit = get_produit(db, produit_id)

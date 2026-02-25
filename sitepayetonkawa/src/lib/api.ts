@@ -3,6 +3,19 @@ const API_CLIENTS = "http://localhost:8000";
 const API_PRODUITS = "http://localhost:8001";
 const API_COMMANDES = "http://localhost:8002";
 
+// Clé API envoyée dans chaque requête
+const API_KEY = "secret_key_123";
+
+// Headers communs à toutes les requêtes
+const HEADERS_JSON = {
+    "Content-Type": "application/json",
+    "X-API-Key": API_KEY
+};
+
+const HEADERS_GET = {
+    "X-API-Key": API_KEY
+};
+
 // ============ TYPES ============
 
 export interface Client {
@@ -30,6 +43,7 @@ export interface Produit {
     stock: number;
     poids_kg: number;
     origine?: string;
+    image_url?: string;
 }
 
 export interface LigneCommande {
@@ -62,13 +76,17 @@ export interface CommandeCreate {
 // ============ CLIENTS ============
 
 export async function getClients(): Promise<Client[]> {
-    const response = await fetch(`${API_CLIENTS}/customers/`);
+    const response = await fetch(`${API_CLIENTS}/customers/`, {
+        headers: HEADERS_GET
+    });
     if (!response.ok) throw new Error("Erreur API Clients");
     return response.json();
 }
 
 export async function getClient(id: number): Promise<Client> {
-    const response = await fetch(`${API_CLIENTS}/customers/${id}`);
+    const response = await fetch(`${API_CLIENTS}/customers/${id}`, {
+        headers: HEADERS_GET
+    });
     if (!response.ok) throw new Error("Client non trouve");
     return response.json();
 }
@@ -76,7 +94,7 @@ export async function getClient(id: number): Promise<Client> {
 export async function createClient(data: ClientCreate): Promise<Client> {
     const response = await fetch(`${API_CLIENTS}/customers/`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: HEADERS_JSON,
         body: JSON.stringify(data)
     });
     if (!response.ok) throw new Error("Erreur creation client");
@@ -86,13 +104,17 @@ export async function createClient(data: ClientCreate): Promise<Client> {
 // ============ PRODUITS ============
 
 export async function getProduits(): Promise<Produit[]> {
-    const response = await fetch(`${API_PRODUITS}/products/`);
+    const response = await fetch(`${API_PRODUITS}/products/`, {
+        headers: HEADERS_GET
+    });
     if (!response.ok) throw new Error("Erreur API Produits");
     return response.json();
 }
 
 export async function getProduit(id: number): Promise<Produit> {
-    const response = await fetch(`${API_PRODUITS}/products/${id}`);
+    const response = await fetch(`${API_PRODUITS}/products/${id}`, {
+        headers: HEADERS_GET
+    });
     if (!response.ok) throw new Error("Produit non trouve");
     return response.json();
 }
@@ -100,13 +122,17 @@ export async function getProduit(id: number): Promise<Produit> {
 // ============ COMMANDES ============
 
 export async function getCommandes(): Promise<Commande[]> {
-    const response = await fetch(`${API_COMMANDES}/orders/`);
+    const response = await fetch(`${API_COMMANDES}/orders/`, {
+        headers: HEADERS_GET
+    });
     if (!response.ok) throw new Error("Erreur API Commandes");
     return response.json();
 }
 
 export async function getCommandesByClient(clientId: number): Promise<Commande[]> {
-    const response = await fetch(`${API_COMMANDES}/orders/client/${clientId}`);
+    const response = await fetch(`${API_COMMANDES}/orders/client/${clientId}`, {
+        headers: HEADERS_GET
+    });
     if (!response.ok) throw new Error("Erreur recuperation commandes");
     return response.json();
 }
@@ -114,7 +140,7 @@ export async function getCommandesByClient(clientId: number): Promise<Commande[]
 export async function createCommande(data: CommandeCreate): Promise<Commande> {
     const response = await fetch(`${API_COMMANDES}/orders/`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: HEADERS_JSON,
         body: JSON.stringify(data)
     });
     if (!response.ok) throw new Error("Erreur creation commande");

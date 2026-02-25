@@ -82,12 +82,16 @@ import Hero from '../components/Hero.astro';
                 return;
             }
 
-            container.innerHTML = featured.map((p, i) => `
+            container.innerHTML = featured.map((p, i) => {
+                const image = p.image_url
+                    ? 'http://localhost:8001' + p.image_url
+                    : placeholderImages[i % placeholderImages.length];
+                return `
                 <div class="product-card bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100">
                     <a href="/produit/${p.id}">
                         <div class="aspect-square overflow-hidden">
                             <img
-                                src="${placeholderImages[i % placeholderImages.length]}"
+                                src="${image}"
                                 alt="${p.nom}"
                                 class="w-full h-full object-cover hover:scale-110 transition-transform duration-300"
                             />
@@ -105,13 +109,14 @@ import Hero from '../components/Hero.astro';
                                 data-id="${p.id}"
                                 data-nom="${p.nom}"
                                 data-prix="${p.prix}"
+                                data-image="${image}"
                             >
                                 Ajouter
                             </button>
                         </div>
                     </div>
                 </div>
-            `).join('');
+            `}).join('');
 
             container.querySelectorAll('.add-to-cart').forEach(btn => {
                 btn.addEventListener('click', (e) => {
@@ -119,7 +124,8 @@ import Hero from '../components/Hero.astro';
                     addToCart({
                         produit_id: parseInt(target.dataset.id!),
                         nom: target.dataset.nom!,
-                        prix: parseFloat(target.dataset.prix!)
+                        prix: parseFloat(target.dataset.prix!),
+                        image: target.dataset.image
                     });
                     target.textContent = 'Ajoute !';
                     target.classList.add('bg-green-600');

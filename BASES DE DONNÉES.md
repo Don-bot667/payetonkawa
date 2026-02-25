@@ -58,6 +58,7 @@ Chaque API gère **une seule chose** (c'est le principe des micro-services).
 │  │ stock      │ Nombre       │ 100                                     │   │
 │  │ origine    │ Texte        │ "Brésil"                                │   │
 │  │ poids_kg   │ Décimal      │ 1.0                                     │   │
+│  │ image_url  │ Texte        │ "/uploads/produit_1.jpg"                │   │
 │  │ actif      │ Oui/Non      │ true                                    │   │
 │  │ date_creation │ Date      │ "2026-02-11 10:30:00"                   │   │
 │  │ date_modification │ Date  │ "2026-02-11 10:30:00"                   │   │
@@ -230,17 +231,22 @@ class Produit(Base):
     # POIDS : poids du paquet en kilogrammes
     # Exemple : 0.25 (250g), 1.0 (1kg)
     poids_kg = Column(Float, default=1.0)
-    
+
+    # IMAGE URL : chemin vers la photo du produit (ajout)
+    # Exemple : "/uploads/produit_1.jpg"
+    # nullable=True = optionnel, un produit peut ne pas avoir de photo
+    image_url = Column(String(500), nullable=True)
+
     # ACTIF : est-ce que le produit est en vente ?
     actif = Column(Boolean, default=True)
-    
+
     # DATE DE CRÉATION : quand le produit a été ajouté
     date_creation = Column(DateTime(timezone=True), server_default=func.now())
-    
+
     # DATE DE MODIFICATION : dernière modification
     date_modification = Column(
-        DateTime(timezone=True), 
-        server_default=func.now(), 
+        DateTime(timezone=True),
+        server_default=func.now(),
         onupdate=func.now()
     )
 ```

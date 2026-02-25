@@ -3,8 +3,13 @@ from sqlalchemy.orm import Session
 from typing import List
 from . import crud, schemas
 from .database import get_db
+from .auth import verify_api_key
 
-router = APIRouter(prefix="/orders", tags=["Orders"])
+router = APIRouter(
+    prefix="/orders",
+    tags=["Orders"],
+    dependencies=[Depends(verify_api_key)]
+)
 
 
 # POST /orders : Creer une commande

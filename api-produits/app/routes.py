@@ -1,10 +1,21 @@
-from fastapi import APIRouter, Depends, HTTPException
+import os
+import glob
+import shutil
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List
 from . import crud, schemas
 from .database import get_db
+from .auth import verify_api_key
 
-router = APIRouter(prefix="/products", tags=["Products"])
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")
+ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
+
+router = APIRouter(
+    prefix="/products",
+    tags=["Products"],
+    dependencies=[Depends(verify_api_key)]
+)
 
 
 # POST /products : Creer un produit
@@ -43,3 +54,34 @@ def delete_product(produit_id: int, db: Session = Depends(get_db)):
     success = crud.delete_produit(db, produit_id=produit_id)
     if not success:
         raise HTTPException(status_code=404, detail="Produit non trouve")
+
+
+# POST /products/{id}/image : Uploader une image pour un produit
+@router.post("/{produit_id}/image", response_model=schemas.ProduitResponse)
+async def upload_product_image(
+    produit_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    db_produit = crud.get_produit(db, produit_id=produit_id)
+    if db_produit is None:
+        raise HTTPException(status_code=404, detail="Produit non trouve")
+
+    ext = (file.filename or "").rsplit(".", 1)[-1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail="Format invalide. Formats acceptes : jpg, jpeg, png, webp"
+        )
+
+    # Supprimer l'ancienne image du produit s'il en a une
+    for old_file in glob.glob(os.path.join(UPLOAD_DIR, f"produit_{produit_id}.*")):
+        os.remove(old_file)
+
+    filename = f"produit_{produit_id}.{ext}"
+    filepath = os.path.join(UPLOAD_DIR, filename)
+    with open(filepath, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    image_url = f"/uploads/{filename}"
+    return crud.update_produit_image(db, produit_id=produit_id, image_url=image_url)

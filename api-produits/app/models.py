@@ -13,6 +13,7 @@ class Produit(Base):
     stock = Column(Integer, default=0, nullable=False)
     origine = Column(String(100), nullable=True)
     poids_kg = Column(Float, default=1.0)
+    image_url = Column(String(500), nullable=True)
     actif = Column(Boolean, default=True)
     date_creation = Column(DateTime(timezone=True), server_default=func.now())
     date_modification = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

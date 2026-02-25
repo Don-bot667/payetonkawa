@@ -43,6 +43,7 @@ python-dotenv==1.0.0
 pytest==7.4.4
 pytest-cov==4.1.0
 httpx==0.26.0
+python-multipart==0.0.9
 ```
 
 | Librairie | A quoi ca sert |
@@ -56,6 +57,7 @@ httpx==0.26.0
 | `pytest` | Lancer les tests automatiques |
 | `pytest-cov` | Mesurer combien de code est teste |
 | `httpx` | Faire des requetes HTTP dans les tests |
+| `python-multipart` | Permet la reception de fichiers (upload d'images) via les formulaires |
 
 ---
 
@@ -133,6 +135,7 @@ class Produit(Base):
     stock = Column(Integer, default=0, nullable=False)
     origine = Column(String(100), nullable=True)
     poids_kg = Column(Float, default=1.0)
+    image_url = Column(String(500), nullable=True)  # Ajout : chemin vers la photo du produit
     actif = Column(Boolean, default=True)
     date_creation = Column(DateTime(timezone=True), server_default=func.now())
     date_modification = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -149,6 +152,7 @@ class Produit(Base):
 | `stock` | Nombre | Oui (defaut 0) | 100 | Quantite en reserve |
 | `origine` | Texte (100 car.) | Non | "Bresil" | Pays d'origine du cafe |
 | `poids_kg` | Decimal | Non (defaut 1.0) | 0.25 | Poids du paquet en kg |
+| `image_url` | Texte (500 car.) | Non | "/uploads/produit_1.jpg" | Chemin vers la photo du produit (ajout) |
 | `actif` | Vrai/Faux | Non (defaut True) | true | Le produit est-il en vente ? |
 | `date_creation` | Date | Auto | "2026-02-12 10:30:00" | Date d'ajout (automatique) |
 | `date_modification` | Date | Auto | "2026-02-12 14:00:00" | Derniere modif (automatique) |
@@ -195,6 +199,7 @@ class ProduitResponse(BaseModel):
     stock: int
     origine: Optional[str]
     poids_kg: float
+    image_url: Optional[str] = None  # Ajout : URL de la photo
     actif: bool
     date_creation: datetime
     date_modification: datetime
@@ -209,7 +214,7 @@ class ProduitResponse(BaseModel):
 |--------|---------|---------|
 | `ProduitCreate` | Quand on **cree** un produit | `{"nom": "Arabica", "prix": 15.99, "stock": 100}` |
 | `ProduitUpdate` | Quand on **modifie** un produit | `{"prix": 12.99}` (on peut ne changer qu'un seul champ) |
-| `ProduitResponse` | Ce que l'API **renvoie** | Toutes les infos du produit, y compris l'id et les dates |
+| `ProduitResponse` | Ce que l'API **renvoie** | Toutes les infos du produit, y compris l'id, les dates et l'image |
 
 **Pourquoi `Optional` ?**
 - Dans `ProduitCreate` : `description` est optionnel a la creation (on peut ajouter un cafe sans description)
@@ -258,6 +263,17 @@ def update_produit(db: Session, produit_id: int, produit: schemas.ProduitUpdate)
     return db_produit
 
 
+# UPDATE IMAGE - Enregistrer l'URL de la photo d'un produit (ajout)
+def update_produit_image(db: Session, produit_id: int, image_url: str):
+    db_produit = get_produit(db, produit_id)
+    if not db_produit:
+        return None
+    db_produit.image_url = image_url
+    db.commit()
+    db.refresh(db_produit)
+    return db_produit
+
+
 # DELETE - Supprimer un produit
 def delete_produit(db: Session, produit_id: int):
     db_produit = get_produit(db, produit_id)
@@ -276,6 +292,7 @@ def delete_produit(db: Session, produit_id: int):
 | `get_produit` | Cherche UN produit par son ID | GET /products/1 → renvoie le cafe #1 |
 | `get_produits` | Renvoie la LISTE des produits | GET /products → tous les cafes |
 | `update_produit` | Modifie un produit existant | PUT /products/1 avec les nouvelles infos |
+| `update_produit_image` | Enregistre l'URL de la photo | POST /products/1/image → sauvegarde le chemin de l'image |
 | `delete_produit` | Supprime un produit | DELETE /products/1 |
 
 **Detail de `update_produit` :**
@@ -344,6 +361,7 @@ def delete_product(produit_id: int, db: Session = Depends(get_db)):
 | `GET` | `/products/` | Lister tous les produits | Reponse : liste de tous les cafes |
 | `GET` | `/products/1` | Voir le produit #1 | Reponse : les details du cafe #1 |
 | `PUT` | `/products/1` | Modifier le produit #1 | Envoyer `{"prix": 12.99}` pour changer le prix |
+| `POST` | `/products/1/image` | Uploader une photo pour le produit #1 | Envoyer un fichier image (jpg, png, webp) en multipart/form-data |
 | `DELETE` | `/products/1` | Supprimer le produit #1 | Le cafe est supprime de la BDD |
 
 ---
