@@ -4,7 +4,7 @@ import shutil
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List
-from . import crud, schemas
+from . import crud, schemas, rabbitmq
 from .database import get_db
 from .auth import verify_api_key
 
@@ -21,7 +21,13 @@ router = APIRouter(
 # POST /products : Creer un produit
 @router.post("/", response_model=schemas.ProduitResponse, status_code=201)
 def create_product(produit: schemas.ProduitCreate, db: Session = Depends(get_db)):
-    return crud.create_produit(db=db, produit=produit)
+    db_produit = crud.create_produit(db=db, produit=produit)
+    rabbitmq.publish_produit_created(db_produit.id, {
+        "nom": db_produit.nom,
+        "prix": db_produit.prix,
+        "stock": db_produit.stock
+    })
+    return db_produit
 
 
 # GET /products : Lister tous les produits
@@ -45,6 +51,13 @@ def update_product(produit_id: int, produit: schemas.ProduitUpdate, db: Session 
     db_produit = crud.update_produit(db, produit_id=produit_id, produit=produit)
     if db_produit is None:
         raise HTTPException(status_code=404, detail="Produit non trouve")
+    rabbitmq.publish_produit_updated(db_produit.id, {
+        "nom": db_produit.nom,
+        "prix": db_produit.prix,
+        "stock": db_produit.stock
+    })
+    if db_produit.stock < 10:
+        rabbitmq.publish_produit_stock_low(db_produit.id, db_produit.nom, db_produit.stock)
     return db_produit
 
 
@@ -54,6 +67,7 @@ def delete_product(produit_id: int, db: Session = Depends(get_db)):
     success = crud.delete_produit(db, produit_id=produit_id)
     if not success:
         raise HTTPException(status_code=404, detail="Produit non trouve")
+    rabbitmq.publish_produit_deleted(produit_id)
 
 
 # POST /products/{id}/image : Uploader une image pour un produit

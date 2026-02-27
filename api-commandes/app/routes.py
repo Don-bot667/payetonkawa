@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
-from . import crud, schemas
+from . import crud, schemas, rabbitmq
 from .database import get_db
 from .auth import verify_api_key
 
@@ -15,7 +15,13 @@ router = APIRouter(
 # POST /orders : Creer une commande
 @router.post("/", response_model=schemas.CommandeResponse, status_code=201)
 def create_order(commande: schemas.CommandeCreate, db: Session = Depends(get_db)):
-    return crud.create_commande(db=db, commande=commande)
+    db_commande = crud.create_commande(db=db, commande=commande)
+    rabbitmq.publish_commande_created(db_commande.id, {
+        "client_id": db_commande.client_id,
+        "total": db_commande.total,
+        "statut": db_commande.statut
+    })
+    return db_commande
 
 
 # GET /orders : Lister toutes les commandes
@@ -45,6 +51,7 @@ def update_order(commande_id: int, commande: schemas.CommandeUpdate, db: Session
     db_commande = crud.update_commande(db, commande_id=commande_id, commande=commande)
     if db_commande is None:
         raise HTTPException(status_code=404, detail="Commande non trouvee")
+    rabbitmq.publish_commande_updated(db_commande.id, db_commande.statut)
     return db_commande
 
 
@@ -54,3 +61,4 @@ def delete_order(commande_id: int, db: Session = Depends(get_db)):
     success = crud.delete_commande(db, commande_id=commande_id)
     if not success:
         raise HTTPException(status_code=404, detail="Commande non trouvee")
+    rabbitmq.publish_commande_deleted(commande_id)

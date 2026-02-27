@@ -58,6 +58,17 @@ def update_commande(db: Session, commande_id: int, commande: schemas.CommandeUpd
     return db_commande
 
 
+# UPDATE STATUT - Modifier uniquement le statut d'une commande (utilisé par le consumer)
+def update_commande_statut(db: Session, commande_id: int, statut: str):
+    db_commande = get_commande(db, commande_id)
+    if not db_commande:
+        return None
+    db_commande.statut = statut
+    db.commit()
+    db.refresh(db_commande)
+    return db_commande
+
+
 # DELETE - Supprimer une commande (et ses lignes grace au CASCADE)
 def delete_commande(db: Session, commande_id: int):
     db_commande = get_commande(db, commande_id)

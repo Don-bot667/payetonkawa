@@ -1617,4 +1617,3 @@ Mois 3: Optimisation
 ### Critères d'acceptation
 - [ ] 4 axes couverts (Informer, Communiquer, Former, Participer)
 
-[Showing lines 1-1618 of 1677 (50.0KB limit). Use offset=1619 to continue.]

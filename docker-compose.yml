@@ -42,8 +42,10 @@ services:
       DATABASE_URL: postgresql://faouz:faouz2020@db-clients:5432/clients_db
       API_KEY: secret_key_123
       ALLOWED_ORIGINS: "http://localhost:3000,http://localhost:4321"
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     depends_on:
       - db-clients
+      - rabbitmq
 
   api-produits:
     build: ./api-produits
@@ -53,8 +55,10 @@ services:
       DATABASE_URL: postgresql://faouz:faouz2020@db-produits:5432/produits_db
       API_KEY: secret_key_123
       ALLOWED_ORIGINS: "http://localhost:3000,http://localhost:4321"
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     depends_on:
       - db-produits
+      - rabbitmq
 
   api-commandes:
     build: ./api-commandes
@@ -64,8 +68,10 @@ services:
       DATABASE_URL: postgresql://faouz:faouz2020@db-commandes:5432/commandes_db
       API_KEY: secret_key_123
       ALLOWED_ORIGINS: "http://localhost:3000,http://localhost:4321"
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     depends_on:
       - db-commandes
+      - rabbitmq
 
   # === MESSAGE BROKER ===
   rabbitmq:
@@ -76,6 +82,18 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
+
+  # === CONSUMER ===
+  consumer-commandes:
+    build: ./api-commandes
+    command: python -m app.consumer
+    environment:
+      DATABASE_URL: postgresql://faouz:faouz2020@db-commandes:5432/commandes_db
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      - db-commandes
+      - rabbitmq
+    restart: unless-stopped
 
 volumes:
   db_clients_data:

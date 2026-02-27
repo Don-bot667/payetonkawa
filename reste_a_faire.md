@@ -58,6 +58,8 @@ def update_customer(client_id: int, client: schemas.ClientUpdate, db: Session = 
     if db_client is None:
         raise HTTPException(status_code=404, detail="Client non trouvé")
     return db_client
+
+
 🎫 TICKET #002 — Ajouter init.py manquant dans api-clients/app
 Priorité : 🟡 Moyenne
 Estimation : 2 min
@@ -97,6 +99,7 @@ Critères d'acceptation
 Chaque API a son config.py
 Variables d'environnement utilisées
 DATABASE_URL, RABBITMQ_URL, API_KEY configurables
+
 PHASE 2 - RABBITMQ
 🎫 TICKET #004 — Créer module RabbitMQ pour api-clients
 Priorité : 🔴 Haute
@@ -341,6 +344,8 @@ Service consumer-commandes ajouté
 Démarre après RabbitMQ (depends_on)
 Restart automatique si crash
 PHASE 3 - TESTS
+
+
 🎫 TICKET #010 — Créer fixtures de test (conftest.py) pour api-clients
 Priorité : 🔴 Haute
 Estimation : 30 min
@@ -411,6 +416,8 @@ Fixture client pour TestClient
 Fixture db_session pour accès direct DB
 Fixture sample_client avec données de test
 Base reset entre chaque test
+
+
 🎫 TICKET #011 — Écrire tests unitaires api-clients
 Priorité : 🔴 Haute
 Estimation : 45 min
@@ -525,6 +532,8 @@ Test READ : liste vide, liste avec données, par ID, 404
 Test UPDATE : succès, 404
 Test DELETE : succès, 404
 Tous les tests passent avec pytest
+
+
 🎫 TICKET #012 — Créer tests pour api-produits
 Priorité : 🔴 Haute
 Estimation : 45 min
@@ -543,6 +552,8 @@ Critères d'acceptation
 Même structure que api-clients
 Tests CRUD complets
 Validation des contraintes métier (prix, stock)
+
+
 🎫 TICKET #013 — Créer tests pour api-commandes
 Priorité : 🔴 Haute
 Estimation : 45 min
@@ -561,6 +572,7 @@ Critères d'acceptation
 Tests CRUD complets
 Test filtrage par client
 Test transitions de statut
+
 🎫 TICKET #014 — Configurer couverture de code (pytest-cov)
 Priorité : 🟡 Moyenne
 Estimation : 15 min
@@ -583,6 +595,9 @@ pytest lance tous les tests des 3 APIs
 Rapport de couverture généré (HTML + terminal)
 Objectif : > 80% de couverture
 PHASE 4 - SÉCURITÉ
+
+
+
 🎫 TICKET #015 — Implémenter authentification API Key
 Priorité : 🔴 Haute
 Estimation : 45 min
@@ -622,6 +637,8 @@ Header X-API-Key requis sur toutes les routes (sauf / et /docs)
 401 si clé manquante
 403 si clé invalide
 Clé configurable via variable d'environnement
+
+
 🎫 TICKET #016 — Protéger les routes avec l'API Key
 Priorité : 🔴 Haute
 Estimation : 20 min
