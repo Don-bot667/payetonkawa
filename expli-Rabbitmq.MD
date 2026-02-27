@@ -4,204 +4,188 @@
 
 ## Table des matières
 
-1. [C'est quoi RabbitMQ et pourquoi on l'utilise ?](#1-cest-quoi-rabbitmq-et-pourquoi-on-lutilise)
-2. [Le vocabulaire expliqué simplement](#2-le-vocabulaire-expliqué-simplement)
-3. [Comment RabbitMQ est intégré dans le projet](#3-comment-rabbitmq-est-intégré-dans-le-projet)
-4. [Les étapes de mise en place](#4-les-étapes-de-mise-en-place)
-5. [Lancer le projet et tester](#5-lancer-le-projet-et-tester)
-6. [Comprendre l'interface web localhost:15672](#6-comprendre-linterface-web-localhost15672)
+1. [Pourquoi RabbitMQ ?](#1-pourquoi-rabbitmq)
+2. [Comment ça fonctionne](#2-comment-ça-fonctionne)
+3. [Ce qu'on a mis en place dans le projet](#3-ce-quon-a-mis-en-place-dans-le-projet)
+4. [Lancer le projet et tester](#4-lancer-le-projet-et-tester)
+5. [L'interface web — localhost:15672](#5-linterface-web--localhost15672)
+6. [Référence rapide](#6-référence-rapide)
 
 ---
 
-## 1. C'est quoi RabbitMQ et pourquoi on l'utilise ?
+## 1. Pourquoi RabbitMQ ?
 
-### Le problème de départ
+### Le problème
 
-Dans PayeTonKawa, on a **3 APIs complètement séparées**, chacune avec **sa propre base de données** :
-
-```
-api-clients   →  base clients_db   (port 5436)
-api-produits  →  base produits_db  (port 5437)
-api-commandes →  base commandes_db (port 5438)
-```
-
-Ces 3 bases ne se voient pas. Elles ne peuvent pas se lire entre elles.
-
-**Exemple concret du problème :**
-
-Imagine ce scénario :
+PayeTonKawa a **3 APIs séparées**, chacune avec **sa propre base de données** :
 
 ```
-1. Jean passe une commande → commandes_db enregistre : commande n°5, client_id = 3
-2. Jean supprime son compte → clients_db supprime le client n°3
-3. commandes_db ne sait rien de cette suppression
-4. La commande n°5 pointe maintenant vers un client qui n'existe plus
-   → C'est une commande fantôme, incohérente
+api-clients   →  clients_db    (port 5436 / 8000)
+api-produits  →  produits_db   (port 5437 / 8001)
+api-commandes →  commandes_db  (port 5438 / 8002)
 ```
 
-Sans solution de communication, `api-commandes` ne saura jamais ce qui se passe dans `api-clients`. Les données deviennent incohérentes.
+Ces 3 bases **ne se voient pas**. Elles ne peuvent pas se lire entre elles directement.
 
----
-
-### La solution : RabbitMQ
-
-RabbitMQ est un **système de messagerie**. Imagine une boîte aux lettres centrale dans un immeuble :
-
-- Quand quelque chose d'important arrive dans un service, il **dépose un message** dans la boîte aux lettres
-- Les autres services qui sont intéressés **viennent lire la boîte** et réagissent
+**Scénario qui pose problème sans RabbitMQ :**
 
 ```
-SANS RabbitMQ :
-  api-clients supprime un client
-  → api-commandes ne sait rien
-  → commandes fantômes dans la base
+1. Jean crée un compte        → clients_db  : client n°3 = Jean
+2. Jean passe une commande    → commandes_db : commande n°5, client_id = 3
+3. Jean supprime son compte   → clients_db  : client n°3 supprimé
+4. commandes_db ne sait rien de cette suppression
+   → la commande n°5 pointe vers un client qui n'existe plus
+   → donnée incohérente dans la base
+```
 
+### La solution
+
+RabbitMQ est un **système de messagerie** placé entre les services. Il joue le rôle d'un **intermédiaire** : quand quelque chose d'important se passe dans un service, ce service dépose un message dans RabbitMQ. Les autres services qui sont concernés lisent ce message et réagissent.
+
+```
 AVEC RabbitMQ :
-  api-clients supprime le client 3
-  → dépose le message "client.deleted : id=3" dans RabbitMQ
-  → api-commandes lit le message
-  → api-commandes marque les commandes du client 3 comme "client_supprime"
-  → plus de données incohérentes
+
+api-clients supprime le client 3
+  → dépose dans RabbitMQ : "client.deleted, id=3"
+
+consumer-commandes reçoit le message
+  → va dans commandes_db
+  → marque la commande n°5 comme "client_supprime"
+  → données cohérentes
 ```
 
-**Point clé :** les services ne se parlent pas directement entre eux. Ils communiquent uniquement via RabbitMQ. C'est ce qu'on appelle la **communication asynchrone** : `api-clients` n'attend pas qu'`api-commandes` réponde. Elle publie le message et continue immédiatement son travail.
+**Point important :** `api-clients` n'attend pas que `api-commandes` ait fini. Elle dépose le message et continue immédiatement. C'est la **communication asynchrone**.
 
 ---
 
-### Pourquoi c'est obligatoire pour ce projet ?
+## 2. Comment ça fonctionne
 
-Le sujet MSPR impose une architecture microservices. L'un des critères d'évaluation est que les services **communiquent entre eux**. Sans RabbitMQ, chaque service est une île isolée. Avec RabbitMQ, on prouve que l'architecture est cohérente et que les données restent synchronisées entre les services.
+### Le trajet d'un message — avec l'exemple "suppression d'un client"
+
+Voici exactement ce qui se passe quand on supprime le client n°1 :
+
+```
+ETAPE 1 — api-clients envoie le message
+  api-clients publie :
+    - contenu  : { "event": "client_deleted", "client_id": 1 }
+    - étiquette: "client.deleted"    ← c'est la Routing Key
+    - vers     : Exchange "payetonkawa"
+
+ETAPE 2 — L'Exchange redirige le message
+  Exchange "payetonkawa" reçoit le message
+    → voit l'étiquette "client.deleted"
+    → consulte ses règles (Bindings)
+    → redirige vers la Queue "commandes_client_events"
+
+ETAPE 3 — La Queue stocke le message
+  Queue "commandes_client_events" :
+    → garde le message jusqu'à ce qu'un consumer le lise
+    → si personne ne lit, il reste là indéfiniment
+
+ETAPE 4 — Le consumer traite le message
+  consumer-commandes reçoit le message
+    → lit le contenu : client_id = 1
+    → ouvre commandes_db
+    → trouve toutes les commandes du client 1
+    → change leur statut en "client_supprime"
+    → confirme à RabbitMQ : "message traité, tu peux le supprimer"
+```
+
+### Les 5 concepts clés expliqués dans ce contexte
+
+| Terme | Ce que c'est | Dans notre projet |
+|-------|-------------|-------------------|
+| **Producer** | Celui qui envoie des messages | api-clients, api-produits, api-commandes |
+| **Consumer** | Celui qui reçoit et traite les messages | consumer-commandes |
+| **Exchange** | Le bureau de tri qui redirige les messages | Exchange nommé `payetonkawa` (type : topic) |
+| **Routing Key** | L'étiquette collée sur le message | `client.deleted`, `produit.stock_low`, `commande.created`, … |
+| **Queue** | La file d'attente où les messages attendent | `commandes_client_events`, `commandes_produit_events` |
+
+### Pourquoi le type "topic" ?
+
+Notre exchange est de type `topic`. Cela veut dire que les règles de routage utilisent des **étiquettes à points**, comme `client.deleted` ou `produit.stock_low`.
+
+Avantage : on peut brancher une queue sur `client.*` pour écouter TOUS les événements d'un client (created, updated, deleted). Dans notre projet, on branche uniquement sur les événements qui nous intéressent.
+
+```
+Règles actuelles (Bindings) :
+
+"client.deleted"  → queue commandes_client_events  → consumer réagit
+"produit.deleted" → queue commandes_produit_events → consumer logue
+
+Les autres messages (client.created, produit.updated, etc.)
+passent par l'exchange mais disparaissent : aucune queue n'y est branchée.
+C'est voulu. Personne n'en a besoin pour l'instant.
+```
 
 ---
 
-## 2. Le vocabulaire expliqué simplement
+## 3. Ce qu'on a mis en place dans le projet
 
-Avant de continuer, voici les termes importants expliqués avec des analogies simples :
-
-| Terme | Analogie | Rôle dans le projet |
-|-------|----------|---------------------|
-| **Producer** | L'expéditeur qui envoie une lettre | api-clients, api-produits, api-commandes qui publient des messages |
-| **Consumer** | Le destinataire qui reçoit et lit la lettre | consumer-commandes qui traite les messages |
-| **Exchange** | Le bureau de tri de La Poste | Reçoit tous les messages et les redirige selon leur étiquette |
-| **Queue** | La boîte aux lettres | File d'attente où les messages patientent avant d'être lus |
-| **Routing Key** | L'adresse sur l'enveloppe | Etiquette du message : `client.deleted`, `produit.stock_low`, etc. |
-| **Binding** | La règle de redirection | "Les lettres avec l'étiquette `client.deleted` vont dans la boîte `commandes_client_events`" |
-
-**Exemple avec une analogie complète :**
-
-```
-api-clients (expéditeur)
-  → écrit une lettre : { "event": "client_deleted", "client_id": 3 }
-  → colle l'étiquette : "client.deleted"
-  → la dépose dans la boîte centrale (Exchange "payetonkawa")
-
-Exchange "payetonkawa" (bureau de tri)
-  → reçoit la lettre
-  → voit l'étiquette "client.deleted"
-  → consulte ses règles (Bindings) : client.deleted → queue commandes_client_events
-  → dépose la lettre dans la bonne boîte aux lettres
-
-Queue "commandes_client_events" (boîte aux lettres)
-  → conserve la lettre jusqu'à ce que quelqu'un la lise
-
-consumer-commandes (destinataire)
-  → surveille en permanence la boîte
-  → prend la lettre, lit le contenu
-  → marque les commandes du client 3 comme "client_supprime"
-```
-
----
-
-## 3. Comment RabbitMQ est intégré dans le projet
-
-### Vue d'ensemble de l'architecture
+### Vue d'ensemble
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   api-clients   │    │  api-produits   │    │  api-commandes  │
-│   (port 8000)   │    │  (port 8001)    │    │  (port 8002)    │
+│   (port 8000)   │    │   (port 8001)   │    │   (port 8002)   │
 │                 │    │                 │    │                 │
-│ publie :        │    │ publie :        │    │ publie :        │
-│ client.created  │    │ produit.created │    │ commande.created│
-│ client.updated  │    │ produit.updated │    │ commande.updated│
-│ client.deleted  │    │ produit.deleted │    │ commande.deleted│
-│                 │    │ produit.stock_low    │                 │
+│ → rabbitmq.py   │    │ → rabbitmq.py   │    │ → rabbitmq.py   │
 └────────┬────────┘    └────────┬────────┘    └────────┬────────┘
          │                     │                       │
          └─────────────────────┼───────────────────────┘
-                               │ tous publient ici
+                               │ publient ici
                                ▼
               ┌────────────────────────────────┐
-              │   RABBITMQ (port 5672)         │
+              │   RabbitMQ  (port 5672)        │
               │   Exchange : "payetonkawa"     │
-              │   Type : topic (par étiquette) │
               │                                │
-              │   Règles (Bindings) :          │
-              │   client.deleted  → queue A    │
-              │   produit.deleted → queue B    │
+              │   client.deleted  → Queue A    │
+              │   produit.deleted → Queue B    │
               └──────────────┬─────────────────┘
                              │
-              ┌──────────────┴─────────────────┐
-              │                                │
-              ▼                                ▼
-   Queue: commandes_client_events   Queue: commandes_produit_events
-   (écoute: client.deleted)         (écoute: produit.deleted)
-              │                                │
-              └──────────────┬─────────────────┘
+               ┌─────────────┴──────────────┐
+               ▼                            ▼
+  commandes_client_events     commandes_produit_events
+               │                            │
+               └─────────────┬──────────────┘
                              │
                              ▼
                   ┌──────────────────────┐
                   │  consumer-commandes  │
                   │                      │
-                  │ Si client.deleted    │
-                  │ → marque commandes   │
-                  │   "client_supprime"  │
+                  │ client.deleted    →  │
+                  │  statut = "client_   │
+                  │  supprime"           │
                   │                      │
-                  │ Si produit.deleted   │
-                  │ → log l'information  │
+                  │ produit.deleted   →  │
+                  │  log uniquement      │
                   └──────────────────────┘
 ```
 
 ### Les fichiers créés ou modifiés
 
-| Fichier | Ce qu'il fait |
-|---------|---------------|
-| `api-clients/app/rabbitmq.py` | Envoie les messages quand un client change |
-| `api-produits/app/rabbitmq.py` | Envoie les messages quand un produit change |
-| `api-commandes/app/rabbitmq.py` | Envoie les messages quand une commande change |
-| `api-commandes/app/consumer.py` | Ecoute et réagit aux messages reçus |
-| `api-clients/app/routes.py` | Appelle rabbitmq.py après chaque action CRUD |
-| `api-produits/app/routes.py` | Appelle rabbitmq.py après chaque action CRUD |
-| `api-commandes/app/routes.py` | Appelle rabbitmq.py après chaque action CRUD |
-| `docker-compose.yml` | Ajoute le service `consumer-commandes` et `rabbitmq` |
+| Fichier | Type de modification | Rôle |
+|---------|---------------------|------|
+| `api-clients/app/rabbitmq.py` | Créé | Envoie les messages quand un client change |
+| `api-produits/app/rabbitmq.py` | Créé | Envoie les messages quand un produit change |
+| `api-commandes/app/rabbitmq.py` | Créé | Envoie les messages quand une commande change |
+| `api-commandes/app/consumer.py` | Créé | Reçoit et traite les messages |
+| `api-clients/app/routes.py` | Modifié | Appelle rabbitmq.py après chaque opération |
+| `api-produits/app/routes.py` | Modifié | Appelle rabbitmq.py après chaque opération |
+| `api-commandes/app/routes.py` | Modifié | Appelle rabbitmq.py après chaque opération |
+| `api-commandes/app/crud.py` | Modifié | Ajout de `update_commande_statut()` |
+| `api-clients/requirements.txt` | Déjà présent | `pika==1.3.2` |
+| `api-produits/requirements.txt` | Modifié | Ajout de `pika==1.3.2` |
+| `api-commandes/requirements.txt` | Modifié | Ajout de `pika==1.3.2` |
+| `docker-compose.yml` | Modifié | Ajout du service `consumer-commandes` + variable `RABBITMQ_URL` |
 
 ---
 
-## 4. Les étapes de mise en place
+### Le fichier rabbitmq.py (même structure dans les 3 APIs)
 
-### Etape 1 — Ajouter la dépendance pika
+Ce fichier a deux fonctions principales :
 
-`pika` est la librairie Python qui permet de parler à RabbitMQ. Sans elle, Python ne saurait pas comment se connecter.
-
-Elle a été ajoutée dans les 3 fichiers `requirements.txt` des APIs :
-
-```
-# Dans api-clients/requirements.txt
-# Dans api-produits/requirements.txt
-# Dans api-commandes/requirements.txt
-
-pika==1.3.2
-```
-
-**Pourquoi dans les 3 ?** Parce que chaque API a besoin d'envoyer des messages.
-
----
-
-### Etape 2 — Créer le fichier rabbitmq.py dans chaque API
-
-Chaque API possède un fichier `app/rabbitmq.py`. Ce fichier a deux responsabilités :
-
-**Responsabilité 1 : Se connecter à RabbitMQ**
+**1 — Se connecter à RabbitMQ**
 
 ```python
 def get_connection():
@@ -210,123 +194,104 @@ def get_connection():
         return pika.BlockingConnection(parameters)
     except Exception as e:
         logger.error(f"Erreur connexion RabbitMQ: {e}")
-        return None  # Retourne None sans faire planter l'API
+        return None
 ```
 
-Si RabbitMQ est éteint, la fonction retourne `None` au lieu de faire crasher toute l'API. L'API continue de fonctionner normalement, elle envoie juste moins de messages.
+Si RabbitMQ est éteint, la fonction retourne `None` au lieu de faire crasher l'API. Les requêtes HTTP continuent de fonctionner normalement.
 
-**Responsabilité 2 : Envoyer les messages**
+**2 — Envoyer un message**
 
 ```python
 def publish_message(routing_key: str, message: dict):
     connection = get_connection()
     if not connection:
-        return False  # RabbitMQ down → on abandonne silencieusement
+        return False  # RabbitMQ down → on abandonne sans crasher
 
     channel = connection.channel()
     channel.exchange_declare(exchange="payetonkawa", exchange_type="topic", durable=True)
     channel.basic_publish(
         exchange="payetonkawa",
-        routing_key=routing_key,   # ex: "client.deleted"
-        body=json.dumps(message),  # le contenu JSON du message
-        properties=pika.BasicProperties(delivery_mode=2)  # message persistant
+        routing_key=routing_key,         # ex : "client.deleted"
+        body=json.dumps(message),        # le contenu en JSON
+        properties=pika.BasicProperties(delivery_mode=2)  # persistant = survit au redémarrage
     )
     connection.close()
 ```
 
-`delivery_mode=2` signifie que le message est **persistant** : même si RabbitMQ redémarre, le message ne sera pas perdu.
+**3 — Les fonctions spécifiques à chaque API**
 
-**Les fonctions spécifiques à chaque service :**
-
-Pour api-clients (`app/rabbitmq.py`) :
+`api-clients/app/rabbitmq.py` expose 3 fonctions :
 ```python
-# Appelée quand on crée un client (POST /customers/)
-publish_client_created(client_id=3, data={"nom": "Jean", "email": "jean@test.com"})
-# → envoie le message avec l'étiquette "client.created"
-
-# Appelée quand on modifie un client (PUT /customers/3)
-publish_client_updated(client_id=3, data={"nom": "Jean-Pierre", "email": "jean@test.com"})
-# → envoie le message avec l'étiquette "client.updated"
-
-# Appelée quand on supprime un client (DELETE /customers/3)
-publish_client_deleted(client_id=3)
-# → envoie le message avec l'étiquette "client.deleted"
+publish_client_created(client_id, client_data)   # routing key : "client.created"
+publish_client_updated(client_id, client_data)   # routing key : "client.updated"
+publish_client_deleted(client_id)                # routing key : "client.deleted"
 ```
 
-Pour api-produits (`app/rabbitmq.py`) :
+`api-produits/app/rabbitmq.py` expose 4 fonctions :
 ```python
-publish_produit_created(produit_id=1, data={"nom": "Café Kenya", "prix": 12.50})
-publish_produit_updated(produit_id=1, data={"nom": "Café Kenya", "prix": 11.00})
-publish_produit_deleted(produit_id=1)
-
-# Cas spécial : alerte si le stock tombe sous 10 unités
-publish_produit_stock_low(produit_id=1, produit_nom="Café Kenya", stock=4)
-# → envoie le message avec l'étiquette "produit.stock_low"
+publish_produit_created(produit_id, produit_data)              # routing key : "produit.created"
+publish_produit_updated(produit_id, produit_data)              # routing key : "produit.updated"
+publish_produit_deleted(produit_id)                            # routing key : "produit.deleted"
+publish_produit_stock_low(produit_id, produit_nom, stock)      # routing key : "produit.stock_low"
 ```
 
-Pour api-commandes (`app/rabbitmq.py`) :
+`api-commandes/app/rabbitmq.py` expose 3 fonctions :
 ```python
-publish_commande_created(commande_id=5, data={"client_id": 3, "total": 25.00})
-publish_commande_updated(commande_id=5, statut="expediee")
-publish_commande_deleted(commande_id=5)
+publish_commande_created(commande_id, commande_data)   # routing key : "commande.created"
+publish_commande_updated(commande_id, statut)          # routing key : "commande.updated"
+publish_commande_deleted(commande_id)                  # routing key : "commande.deleted"
 ```
 
 ---
 
-### Etape 3 — Brancher RabbitMQ dans les routes
+### L'appel dans routes.py — règle : BDD d'abord, message ensuite
 
-Dans chaque `routes.py`, après chaque opération, on appelle la fonction correspondante du fichier `rabbitmq.py`.
+La règle est toujours la même dans les 3 APIs : on **sauvegarde en base en premier**, puis on **publie le message**. Si la base échoue, on ne publie rien.
 
-**Règle importante :** on sauvegarde en base D'ABORD, puis on publie le message. Jamais l'inverse.
+**Exemple — Création d'un client :**
 
 ```python
-# DANS api-clients/app/routes.py
-
-from . import rabbitmq  # on importe le module
-
 @router.post("/customers/")
-def create_customer(client, db):
-    # Etape 1 : on sauvegarde en base PostgreSQL
+def create_customer(client: schemas.ClientCreate, db: Session = Depends(get_db)):
+    # 1. On sauvegarde en base PostgreSQL
     db_client = crud.create_client(db, client)
 
-    # Etape 2 : si la sauvegarde a réussi, on envoie le message
+    # 2. La sauvegarde a réussi → on publie le message
     rabbitmq.publish_client_created(db_client.id, {
         "nom": db_client.nom,
         "email": db_client.email
     })
 
-    # Etape 3 : on retourne le client créé au frontend
+    # 3. On retourne le client créé
     return db_client
 ```
 
-Pourquoi dans cet ordre ? Si la base de données échoue (ex: email déjà utilisé), l'opération s'arrête à l'étape 1 et on ne publie jamais de faux message.
-
-**Exemple pour le DELETE :**
+**Exemple — Suppression d'un client :**
 
 ```python
-@router.delete("/customers/{client_id}")
-def delete_customer(client_id, db):
-    # Etape 1 : on supprime de la base
+@router.delete("/customers/{client_id}", status_code=204)
+def delete_customer(client_id: int, db: Session = Depends(get_db)):
+    # 1. On supprime de la base
     success = crud.delete_client(db, client_id)
     if not success:
         raise HTTPException(status_code=404, detail="Client non trouvé")
 
-    # Etape 2 : la suppression a réussi → on prévient les autres services
+    # 2. Suppression réussie → on prévient les autres services
     rabbitmq.publish_client_deleted(client_id)
-    # api-commandes va recevoir ce message et agir
+    # consumer-commandes va recevoir ce message et mettre à jour les commandes
 ```
 
-**Exemple spécial pour le stock bas dans api-produits :**
+**Exemple spécial — Alerte stock bas dans api-produits :**
 
 ```python
 @router.put("/products/{produit_id}")
-def update_product(produit_id, produit, db):
+def update_product(produit_id: int, produit: schemas.ProduitUpdate, db: Session = Depends(get_db)):
     db_produit = crud.update_produit(db, produit_id, produit)
 
-    # On publie la mise à jour du produit
+    # Message standard : mise à jour du produit
     rabbitmq.publish_produit_updated(db_produit.id, {"stock": db_produit.stock})
 
-    # En plus : si le stock est trop bas, on envoie une alerte séparée
+    # Message supplémentaire si le stock est trop bas
     if db_produit.stock < 10:
         rabbitmq.publish_produit_stock_low(db_produit.id, db_produit.nom, db_produit.stock)
 
@@ -335,35 +300,40 @@ def update_product(produit_id, produit, db):
 
 ---
 
-### Etape 4 — Créer le Consumer dans api-commandes
+### Le consumer (api-commandes/app/consumer.py)
 
-Le fichier `api-commandes/app/consumer.py` est le seul qui **écoute** des messages. Les autres fichiers `rabbitmq.py` envoient des messages, lui les reçoit.
+C'est le seul fichier qui **reçoit** des messages. Il tourne en boucle infinie dans un conteneur Docker séparé.
 
-Il fonctionne en boucle infinie : il reste connecté à RabbitMQ et attend.
+**Fonctionnement général :**
 
 ```
-consumer-commandes démarre
-→ se connecte à RabbitMQ
-→ déclare qu'il écoute les queues :
-    commandes_client_events (messages : client.deleted)
-    commandes_produit_events (messages : produit.deleted)
-→ attend...
-→ attend...
-→ reçoit "client.deleted : client_id=3"
-    → ouvre la base commandes_db
-    → récupère toutes les commandes du client 3
-    → change leur statut en "client_supprime"
-    → confirme à RabbitMQ que le message est traité (ack)
-→ attend...
-→ attend...
+Démarrage → connexion à RabbitMQ
+          → déclare qu'il écoute 2 queues :
+              commandes_client_events  (messages : client.deleted)
+              commandes_produit_events (messages : produit.deleted)
+          → boucle infinie d'attente...
+
+Quand "client.deleted" arrive :
+  → lit le client_id dans le message
+  → récupère toutes les commandes de ce client dans commandes_db
+  → change leur statut en "client_supprime"
+  → envoie ACK à RabbitMQ (message traité, on peut le supprimer)
+
+Quand "produit.deleted" arrive :
+  → logue l'information
+  → envoie ACK à RabbitMQ
+
+En cas d'erreur :
+  → envoie NACK à RabbitMQ (message non traité)
+  → RabbitMQ remet le message en queue pour réessayer
 ```
 
-**Réaction quand un client est supprimé :**
+**Le code du callback pour client.deleted :**
 
 ```python
 def callback_client_deleted(ch, method, properties, body):
     data = json.loads(body)
-    client_id = data.get("client_id")  # ex: 3
+    client_id = data.get("client_id")   # ex: 1
 
     db = SessionLocal()
     commandes = crud.get_commandes_by_client(db, client_id)
@@ -374,62 +344,60 @@ def callback_client_deleted(ch, method, properties, body):
     # commande n°5 → statut = "client_supprime"
     # commande n°8 → statut = "client_supprime"
 
+    db.close()
     ch.basic_ack(delivery_tag=method.delivery_tag)
-    # confirme à RabbitMQ : "message bien reçu et traité, tu peux l'effacer"
+    # Confirme à RabbitMQ : "message traité, tu peux le supprimer"
 ```
-
-Si une erreur se produit, on envoie un `nack` (not acknowledged) et RabbitMQ remet le message en queue pour le retraiter plus tard.
 
 ---
 
-### Etape 5 — Ajouter le consumer dans docker-compose.yml
+### Le service consumer dans docker-compose.yml
 
-Le consumer est un **processus séparé** de l'API. Il a son propre service dans `docker-compose.yml`.
+Le consumer est un **processus séparé** de l'API. Il utilise le même code qu'`api-commandes` mais lance `consumer.py` au lieu de FastAPI.
 
 ```yaml
 consumer-commandes:
-  build: ./api-commandes        # utilise le même code qu'api-commandes
-  command: python -m app.consumer  # mais lance consumer.py, pas l'API FastAPI
+  build: ./api-commandes          # même image qu'api-commandes
+  command: python -m app.consumer # mais lance consumer.py, pas l'API
   environment:
     DATABASE_URL: postgresql://faouz:faouz2020@db-commandes:5432/commandes_db
     RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
   depends_on:
-    - db-commandes   # attend que la base soit prête
-    - rabbitmq       # attend que RabbitMQ soit prêt
-  restart: unless-stopped  # redémarre automatiquement si le consumer crash
+    - db-commandes
+    - rabbitmq
+  restart: unless-stopped         # redémarre automatiquement si crash
 ```
 
-Pourquoi un service séparé et pas intégré dans api-commandes ?
+**Pourquoi un service séparé et pas intégré dans l'API ?**
 
 ```
-Si on intégrait le consumer dans l'API FastAPI :
-→ Un seul processus gèrerait à la fois les requêtes HTTP ET les messages RabbitMQ
-→ Un message long à traiter bloquerait les requêtes HTTP
-→ Un crash du consumer tuerait aussi l'API
+Si le consumer était dans l'API FastAPI :
+  → un message long à traiter bloquerait les requêtes HTTP
+  → un crash du consumer tuerait aussi l'API
 
 Avec un service séparé :
-→ L'API répond aux requêtes HTTP sans être bloquée
-→ Le consumer traite les messages en parallèle
-→ Si le consumer crash, l'API continue de fonctionner
-→ restart: unless-stopped redémarre le consumer automatiquement
+  → l'API répond aux requêtes HTTP sans être bloquée
+  → le consumer traite les messages en parallèle
+  → si le consumer crash, l'API continue de fonctionner
+  → restart: unless-stopped redémarre le consumer automatiquement
 ```
 
 ---
 
-## 5. Lancer le projet et tester
+## 4. Lancer le projet et tester
 
-### Lancer tout le projet
+### Démarrer tout le projet
 
 ```bash
 # Depuis le dossier payetonkawa/
 docker compose up -d
 ```
 
-Cela démarre les 8 services en même temps :
-- `db-clients`, `db-produits`, `db-commandes` (les 3 bases PostgreSQL)
-- `api-clients`, `api-produits`, `api-commandes` (les 3 APIs)
-- `rabbitmq` (le message broker)
-- `consumer-commandes` (le consumer)
+Cela démarre 8 services :
+- `db-clients`, `db-produits`, `db-commandes` — les 3 bases PostgreSQL
+- `api-clients`, `api-produits`, `api-commandes` — les 3 APIs FastAPI
+- `rabbitmq` — le message broker
+- `consumer-commandes` — le processus qui écoute les messages
 
 **Vérifier que tout est démarré :**
 
@@ -439,25 +407,20 @@ docker compose ps
 
 Tous les services doivent afficher `running`.
 
----
+**Note — Reconstruire les images après modification du code Python :**
 
-### Important : reconstruire les images après modification du code
-
-Quand tu modifies du code Python, Docker ne le voit pas automatiquement. Il faut reconstruire les images :
+Docker ne détecte pas automatiquement les changements de code. Il faut reconstruire les images :
 
 ```bash
-# Reconstruire les images
 docker compose build api-clients api-produits api-commandes
-
-# Puis redémarrer les conteneurs avec le nouveau code
 docker compose up -d api-clients api-produits api-commandes consumer-commandes
 ```
 
 ---
 
-### Test 1 — Vérifier que RabbitMQ reçoit les messages
+### Test 1 — Un message est bien envoyé quand on crée un client
 
-**Etape 1 :** Crée un nouveau client
+**Crée un client :**
 
 ```bash
 curl -X POST http://localhost:8000/customers/ \
@@ -482,17 +445,17 @@ Réponse attendue :
 }
 ```
 
-**Etape 2 :** Va sur `http://localhost:15672` → **Exchanges** → **payetonkawa**
+**Vérifie dans RabbitMQ :** va sur `http://localhost:15672` → **Exchanges** → **payetonkawa**
 
-Tu vois un pic sur le graphique **"Publish (In)"** à l'heure exacte de la création. Cela confirme qu'un message `client.created` a bien été envoyé.
+Tu vois un pic sur le graphique **"Publish (In)"** : le message `client.created` a bien été envoyé.
 
 ---
 
-### Test 2 — Vérifier que le consumer réagit à une suppression
+### Test 2 — La suppression d'un client met à jour ses commandes automatiquement
 
-Ce test démontre le scénario complet : créer un client, lui créer une commande, le supprimer, et vérifier que sa commande change automatiquement de statut.
+Ce test montre le scénario complet : créer un client, lui créer une commande, le supprimer, et voir que sa commande change de statut automatiquement.
 
-**Etape 1 :** Crée un client (note son `id`, ex: `id = 1`)
+**Etape 1 — Crée un client**
 
 ```bash
 curl -X POST http://localhost:8000/customers/ \
@@ -501,7 +464,9 @@ curl -X POST http://localhost:8000/customers/ \
   -d '{"nom": "Martin", "prenom": "Sophie", "email": "sophie@test.com", "telephone": "0698765432"}'
 ```
 
-**Etape 2 :** Crée une commande pour ce client
+Note l'`id` retourné (ex: `1`).
+
+**Etape 2 — Crée une commande pour ce client**
 
 ```bash
 curl -X POST http://localhost:8002/orders/ \
@@ -513,23 +478,25 @@ curl -X POST http://localhost:8002/orders/ \
   }'
 ```
 
-Réponse : la commande a `"statut": "en_attente"` et un `id`, ex: `id = 5`
+Note l'`id` de la commande (ex: `5`). Le statut est `"en_attente"`.
 
-**Etape 3 :** Vérifie le statut de la commande (il doit être `en_attente`)
+**Etape 3 — Vérifie le statut de la commande**
 
 ```bash
 curl http://localhost:8002/orders/5 -H "X-API-Key: secret_key_123"
 ```
 
-**Etape 4 :** Supprime le client
+Résultat : `"statut": "en_attente"` — normal, le client existe encore.
+
+**Etape 4 — Supprime le client**
 
 ```bash
 curl -X DELETE http://localhost:8000/customers/1 -H "X-API-Key: secret_key_123"
 ```
 
-Réponse : code `204` (suppression réussie, sans contenu)
+Réponse : code `204` (suppression réussie).
 
-**Etape 5 :** Revérifie la commande
+**Etape 5 — Revérifie la commande**
 
 ```bash
 curl http://localhost:8002/orders/5 -H "X-API-Key: secret_key_123"
@@ -540,18 +507,18 @@ Résultat attendu :
 {
   "id": 5,
   "client_id": 1,
-  "statut": "client_supprime",   ← automatiquement mis à jour par le consumer !
+  "statut": "client_supprime",
   "total": 19.98
 }
 ```
 
-La commande est passée de `en_attente` à `client_supprime` automatiquement, sans qu'on ait rien fait manuellement. C'est RabbitMQ + le consumer qui ont fait le travail.
+La commande est passée de `"en_attente"` à `"client_supprime"` **automatiquement**, sans aucune action manuelle. C'est RabbitMQ + le consumer qui ont fait le travail.
 
 ---
 
-### Test 3 — Vérifier l'alerte stock bas
+### Test 3 — L'alerte stock bas fonctionne
 
-**Etape 1 :** Met le stock d'un produit à une valeur inférieure à 10
+**Met le stock d'un produit sous 10 :**
 
 ```bash
 curl -X PUT http://localhost:8001/products/1 \
@@ -560,9 +527,9 @@ curl -X PUT http://localhost:8001/products/1 \
   -d '{"stock": 5}'
 ```
 
-**Etape 2 :** Va sur `http://localhost:15672` → **Exchanges** → **payetonkawa**
+**Vérifie dans RabbitMQ :** Exchanges → payetonkawa → graphique
 
-Tu vois **deux pics** sur le graphique : un pour `produit.updated` et un pour `produit.stock_low`. L'alerte est bien envoyée quand le stock passe sous 10.
+Tu vois **deux pics** : un pour `produit.updated` et un pour `produit.stock_low`. Deux messages ont été envoyés par la même action.
 
 ---
 
@@ -572,7 +539,7 @@ Tu vois **deux pics** sur le graphique : un pour `produit.updated` et un pour `p
 docker compose logs consumer-commandes -f
 ```
 
-Le `-f` signifie "follow" : les logs s'affichent en temps réel. Tu verras des lignes comme :
+Le `-f` affiche les logs en direct. Tu verras :
 
 ```
 consumer-commandes-1  | INFO: Consumer démarré, en attente de messages...
@@ -580,176 +547,107 @@ consumer-commandes-1  | INFO: Client supprimé détecté: 1
 consumer-commandes-1  | INFO: 1 commandes marquées comme client_supprime
 ```
 
-Pour arrêter d'afficher les logs : `Ctrl + C`
+Pour arrêter l'affichage : `Ctrl + C`
 
 ---
 
-### Lancer les tests unitaires
-
-Les tests n'ont **pas besoin de RabbitMQ**. Ils utilisent SQLite en mémoire et les appels RabbitMQ échouent silencieusement (retournent `False` sans bloquer). C'est voulu.
-
-```bash
-# Tests api-clients
-cd /home/david/dev/Mspr/payetonkawa/api-clients
-source venv/bin/activate
-pytest tests/ -v
-
-# Tests api-produits
-cd /home/david/dev/Mspr/payetonkawa/api-produits
-source venv/bin/activate
-pytest tests/ -v
-
-# Tests api-commandes
-cd /home/david/dev/Mspr/payetonkawa/api-commandes
-source venv/bin/activate
-pytest tests/ -v
-```
-
----
-
-## 6. Comprendre l'interface web localhost:15672
+## 5. L'interface web — localhost:15672
 
 ### Se connecter
 
-Ouvre `http://localhost:15672` dans ton navigateur.
+Ouvre `http://localhost:15672` dans le navigateur.
 
 - Identifiant : `guest`
 - Mot de passe : `guest`
 
-En haut à droite, change le rafraîchissement sur **"Refresh every 5 seconds"** pour voir l'activité en temps réel.
+Change le rafraîchissement en haut à droite sur **"Refresh every 5 seconds"** pour voir l'activité en direct.
 
 ---
 
-### Onglet Overview — Vue d'ensemble
+### Onglet Overview
 
-C'est la page d'accueil. Elle montre l'état global de RabbitMQ.
+Page d'accueil. Elle montre l'état global de RabbitMQ.
 
-**Section "Queued messages" (graphique du haut) :**
+**"Queued messages" (graphique du haut) :**
 
-Ce graphique montre le nombre de messages **en attente** dans les queues à chaque instant.
-
-```
-Queued messages
- │
- 1│     ██
- │    ████
- 0│────────────────────────────────→ temps
-        ↑
-   Un message est arrivé dans une queue
-   mais a été traité quasi instantanément
-```
-
-- **Ready (jaune)** = messages en attente d'être lus par le consumer
-- **Unacked (bleu)** = messages en cours de traitement par le consumer
-- **Total (rouge)** = Ready + Unacked
-
-Dans notre projet, ce graphique sera presque toujours à **0** car le consumer traite les messages instantanément. Un pic apparaît brièvement lors d'un événement, puis retombe à 0.
-
-**Section "Message rates" (graphique du bas) :**
-
-Ce graphique montre le **débit** de messages par seconde.
-
-- **Publish (jaune)** = combien de messages sont envoyés par seconde
-- **Deliver (vert)** = combien de messages sont livrés aux consumers par seconde
-
-Ces deux courbes montent et descendent ensemble lors d'une action (création, suppression, etc.).
-
-**Section "Global counts" :**
+Nombre de messages en attente dans toutes les queues.
 
 ```
-Connections: 1 | Channels: 1 | Exchanges: 8 | Queues: 2 | Consumers: 2
+Ready   (jaune)  = messages qui attendent d'être lus
+Unacked (bleu)   = messages en cours de traitement par le consumer
+Total   (rouge)  = Ready + Unacked
 ```
 
-| Compteur | Ce que ça veut dire | Valeur normale |
-|----------|---------------------|----------------|
-| Connections | Nombre de services connectés à RabbitMQ | 1 (le consumer) |
-| Exchanges | Nombre d'exchanges (bureau de tri) | 8 (7 internes + payetonkawa) |
-| Queues | Nombre de files d'attente | 2 (nos 2 queues) |
-| Consumers | Nombre de lecteurs actifs | 2 (1 par queue) |
+Dans notre projet, ce graphique est presque toujours à **0** car le consumer traite les messages immédiatement. Un bref pic apparaît lors d'une action, puis retombe à 0.
 
-**Section "Nodes" — Santé du serveur :**
+**"Message rates" (graphique du bas) :**
+
+Débit de messages par seconde.
 
 ```
-Memory     : ████████████░░░░░░  159 MiB   → vert = OK
-Disk space : ████████████░░░░░░  364 GiB   → vert = OK
-Uptime     : 35m 44s                       → temps de fonctionnement
+Publish (jaune) = messages envoyés par les APIs
+Deliver (vert)  = messages livrés au consumer
 ```
 
-Si la barre Memory ou Disk space devient rouge : RabbitMQ manque de ressources.
+Ces deux courbes bougent ensemble lors d'une action CRUD.
+
+**"Global counts" :**
+
+```
+Connections: 1  Channels: 1  Exchanges: 8  Queues: 2  Consumers: 2
+```
+
+| Compteur | Valeur normale | Si différent |
+|----------|----------------|--------------|
+| Connections | 1 (le consumer) | 0 = consumer arrêté |
+| Queues | 2 | 0 = les APIs n'ont jamais publié |
+| Consumers | 2 (1 par queue) | 0 = consumer arrêté |
+
+**"Nodes" — santé du serveur :**
+
+```
+Memory     : ████████░░░  159 MiB    → vert = OK
+Disk space : ████████░░░  364 GiB    → vert = OK
+```
+
+Si une barre devient rouge : RabbitMQ manque de ressources.
 
 ---
 
-### Onglet Exchanges — Le bureau de tri
+### Onglet Exchanges
 
-Clique sur **"Exchanges"** dans le menu.
+Liste tous les exchanges. **Ignore les 7 exchanges `amq.*`** — ce sont des exchanges internes à RabbitMQ. Le seul qui nous concerne est **`payetonkawa`**.
 
-Tu vois 8 exchanges. Les 7 premiers commencent par `amq.` : ce sont des exchanges internes à RabbitMQ, **ignore-les**. Le seul qui nous concerne est **`payetonkawa`**.
-
-```
-| Name            | Type   | Features |
-|-----------------|--------|----------|
-| (AMQP default)  | direct | D        |  ← interne, ignorer
-| amq.direct      | direct | D        |  ← interne, ignorer
-| amq.fanout      | fanout | D        |  ← interne, ignorer
-| amq.headers     | headers| D        |  ← interne, ignorer
-| amq.match       | headers| D        |  ← interne, ignorer
-| amq.rabbitmq... | topic  | D I      |  ← interne, ignorer
-| amq.topic       | topic  | D        |  ← interne, ignorer
-| payetonkawa     | topic  | D        |  ← LE NÔTRE
-```
-
-**Clique sur `payetonkawa` pour voir sa page de détail :**
+**Clique sur `payetonkawa` :**
 
 ```
 Exchange: payetonkawa
-├── Type : topic       → les messages sont triés par étiquette (routing key)
-├── Features : durable → survit au redémarrage de RabbitMQ
-│
-├── Graphique "Message rates"
-│     Publish (In)  = courbe jaune : messages reçus des APIs
-│     Publish (Out) = courbe bleue : messages redistribués vers les queues
-│
-├── Bindings → les règles de routage
-│     client.deleted   → commandes_client_events
-│     produit.deleted  → commandes_produit_events
-│
-└── Publish message → pour envoyer un message manuellement (debug)
+Type     : topic    → routage par étiquettes à points (client.deleted, etc.)
+Durable  : oui      → survit au redémarrage de RabbitMQ
+
+Graphique :
+  Publish (In)  = messages reçus depuis les APIs
+  Publish (Out) = messages redistribués vers les queues
+
+Bindings (règles de routage) :
+  "client.deleted"   → commandes_client_events
+  "produit.deleted"  → commandes_produit_events
 ```
 
-**Comment lire le graphique de l'exchange :**
+**Pourquoi certains messages ne sont pas dans les bindings ?**
+
+Les messages `client.created`, `produit.updated`, etc. passent par l'exchange mais ne vont dans aucune queue. Ils disparaissent car aucun service n'a besoin de les consommer actuellement.
 
 ```
-Publish (In) jaune  ↑   Si tu supprimes un client :
-                    │   → api-clients publie "client.deleted"
-                ────┤   → courbe jaune monte
-                    │
-Publish (Out) bleu  │   → l'exchange redirige vers la queue
-                ────┤   → courbe bleue monte aussi
-                    │
-Rien ne bouge       │   → aucune action CRUD récente = normal au repos
-```
-
-**La section Bindings — pourquoi certains messages ne sont pas stockés :**
-
-Seuls `client.deleted` et `produit.deleted` ont une queue branchée.
-
-Les autres messages (`client.created`, `produit.updated`, etc.) passent par l'exchange mais ne vont dans **aucune queue**. Ils traversent et disparaissent car aucun service n'a besoin de les consommer.
-
-```
-client.created   → exchange payetonkawa → pas de queue branchée → message perdu
-                                                                   (voulu, personne n'en a besoin)
-
-client.deleted   → exchange payetonkawa → commandes_client_events → consumer lit
-                                                                   (utile ! consumer doit réagir)
+client.created  → exchange payetonkawa → pas de queue → message perdu (voulu)
+client.deleted  → exchange payetonkawa → commandes_client_events → consumer réagit
 ```
 
 ---
 
-### Onglet Queues and Streams — Les files d'attente
+### Onglet Queues and Streams
 
-Clique sur **"Queues and Streams"** dans le menu.
-
-Tu vois les 2 queues du projet :
+Liste toutes les queues.
 
 ```
 | Name                      | State   | Ready | Unacked | Total |
@@ -758,132 +656,137 @@ Tu vois les 2 queues du projet :
 | commandes_produit_events  | running |  0    |    0    |   0   |
 ```
 
-**Signification des colonnes :**
+| Colonne | Ce que ça veut dire |
+|---------|---------------------|
+| `State: running` | Queue active, écoute les messages |
+| `State: idle` | Queue en pause, rien à traiter |
+| `Ready = 0` | Aucun message en attente — normal |
+| `Ready > 0` qui ne diminue pas | Consumer arrêté ou bloqué |
+| `Unacked > 0` | Message en cours de traitement |
 
-| Colonne | Signification |
-|---------|---------------|
-| `State: running` | La queue est active et écoute les messages |
-| `State: idle` | La queue attend, rien à traiter en ce moment |
-| `Ready = 0` | Aucun message en attente → normal, tout est traité |
-| `Ready > 0` | Des messages attendent → peut indiquer que le consumer est arrêté |
-| `Unacked` | Messages pris par le consumer mais pas encore confirmés traités |
-| `Total` | Ready + Unacked |
-
-**Clique sur `commandes_client_events`** pour voir sa page de détail :
+**Clique sur `commandes_client_events` pour voir le détail :**
 
 ```
-Queue: commandes_client_events
-│
-├── Graphique "Queued messages"
-│     Ready   (jaune) = messages en attente
-│     Unacked (bleu)  = en cours de traitement
-│     Total   (rouge) = les deux ensemble
-│
-├── Graphique "Message rates"
-│     Publish = messages qui entrent dans la queue
-│     Deliver = messages livrés au consumer
-│
-├── Details
-│     State             : idle     → queue en attente, rien à traiter
-│     Consumers         : 1        → notre consumer-commandes est connecté
-│     Consumer capacity : 100%     → consumer disponible et prêt
-│
-├── Consumers (1)   → clique pour voir quel service écoute cette queue
-├── Bindings  (2)   → clique pour voir depuis quel exchange arrivent les messages
-├── Get messages    → lire un message manuellement (utile pour déboguer)
-└── Purge           → vider tous les messages de la queue
+Consumers : 1       → notre consumer-commandes est connecté
+State     : idle    → en attente, rien à traiter en ce moment
 ```
 
 ---
 
-### Comment lire un message manuellement dans une queue
+### Comment lire un message manuellement (pour déboguer)
 
-Cette fonctionnalité est utile pour **déboguer** et voir exactement ce qu'un message contient.
+Utile pour voir **exactement** ce que contient un message.
 
-**Pour voir un message figé dans la queue :**
-
-**Etape 1 :** Arrête le consumer pour qu'il ne consomme pas les messages
+**Etape 1 — Arrête le consumer** pour qu'il ne consomme pas les messages immédiatement
 
 ```bash
 docker compose stop consumer-commandes
 ```
 
-**Etape 2 :** Supprime un client depuis le terminal
+**Etape 2 — Supprime un client** pour générer un message
 
 ```bash
 curl -X DELETE http://localhost:8000/customers/1 -H "X-API-Key: secret_key_123"
 ```
 
-**Etape 3 :** Va sur la queue dans RabbitMQ
+**Etape 3 — Va dans l'interface**
 
 `Queues and Streams` → `commandes_client_events`
 
-Tu vois maintenant **Ready = 1** (le message attend car le consumer est arrêté).
+Tu vois **Ready = 1** (le message attend car le consumer est arrêté).
 
-**Etape 4 :** Clique sur **"Get messages"** (en bas de la page)
+**Etape 4 — Clique sur "Get messages"** (en bas de la page de la queue)
 
-1. Laisse tous les paramètres par défaut
-2. Clique sur le bouton **"Get Message(s)"**
-3. Le message apparaît avec son contenu complet :
+1. Laisse les paramètres par défaut
+2. Clique sur **"Get Message(s)"**
+3. Le message apparaît :
 
 ```
-Routing key  : client.deleted
-Payload      :
+Routing key : client.deleted
+Payload     :
 {
-  "event": "client_deleted",
-  "client_id": 1,
-  "timestamp": "2026-02-27T10:18:26Z"
+  "event"     : "client_deleted",
+  "client_id" : 1,
+  "timestamp" : "2026-02-27T10:18:26Z"
 }
 ```
 
-**Etape 5 :** Redémarre le consumer pour traiter le message
+**Etape 5 — Redémarre le consumer** pour traiter le message
 
 ```bash
 docker compose start consumer-commandes
 ```
 
-Le consumer lit le message, met à jour les commandes, et la queue repasse à **Ready = 0**.
+Le consumer lit le message, met à jour les commandes, la queue repasse à **Ready = 0**.
 
 ---
 
-### Onglet Connections — Les connexions actives
+### Signaux d'alerte — que faire si quelque chose ne va pas
 
-Clique sur **"Connections"** dans le menu.
+| Ce que tu vois dans l'interface | Problème probable | Solution |
+|---------------------------------|-------------------|----------|
+| `Consumers: 0` sur une queue | Consumer arrêté | `docker compose start consumer-commandes` |
+| `Ready` augmente sans diminuer | Consumer bloqué ou crashé | `docker compose logs consumer-commandes` |
+| Exchange `payetonkawa` absent | APIs jamais lancées ou `RABBITMQ_URL` manquant | Vérifier docker-compose.yml + rebuild |
+| Aucune connexion dans "Connections" | Rien n'est connecté | `docker compose up -d` |
+| Memory ou Disk rouge dans "Nodes" | RabbitMQ manque de ressources | Libérer de la mémoire / de l'espace disque |
 
-Tu vois toutes les connexions TCP ouvertes vers RabbitMQ.
+---
 
+## 6. Référence rapide
+
+### Tous les messages envoyés dans le projet
+
+| Routing Key | Qui l'envoie | Déclencheur | Qui l'écoute |
+|-------------|--------------|-------------|--------------|
+| `client.created` | api-clients | POST /customers/ | *(personne)* |
+| `client.updated` | api-clients | PUT /customers/{id} | *(personne)* |
+| `client.deleted` | api-clients | DELETE /customers/{id} | consumer-commandes |
+| `produit.created` | api-produits | POST /products/ | *(personne)* |
+| `produit.updated` | api-produits | PUT /products/{id} | *(personne)* |
+| `produit.deleted` | api-produits | DELETE /products/{id} | consumer-commandes (log) |
+| `produit.stock_low` | api-produits | PUT si stock < 10 | *(personne)* |
+| `commande.created` | api-commandes | POST /orders/ | *(personne)* |
+| `commande.updated` | api-commandes | PUT /orders/{id} | *(personne)* |
+| `commande.deleted` | api-commandes | DELETE /orders/{id} | *(personne)* |
+
+---
+
+### Commandes utiles
+
+```bash
+# Démarrer tout le projet
+docker compose up -d
+
+# Voir l'état de tous les services
+docker compose ps
+
+# Logs du consumer en direct
+docker compose logs consumer-commandes -f
+
+# Rebuild après modification du code Python
+docker compose build api-clients api-produits api-commandes
+docker compose up -d api-clients api-produits api-commandes consumer-commandes
+
+# Arrêter sans supprimer les données
+docker compose down
+
+# Reset complet (supprime toutes les données)
+docker compose down -v
 ```
-| Name          | State | From IP     | Description            |
-|---------------|-------|-------------|------------------------|
-| 172.20.0.x    | open  | (container) | consumer-commandes     |
-```
-
-Le `consumer-commandes` maintient une connexion **permanente** car il écoute en continu.
-
-Les APIs (`api-clients`, `api-produits`, `api-commandes`) ouvrent et ferment une connexion à chaque message envoyé. Elles n'apparaissent donc dans cette liste que pendant la fraction de seconde où elles envoient un message.
 
 ---
 
-### Tableau de bord — Que regarder selon la situation
+### Points essentiels à retenir
 
-| Je veux vérifier... | Où aller | Ce que je dois voir |
-|---------------------|----------|---------------------|
-| RabbitMQ fonctionne | Overview → Nodes | Barres Memory et Disk en vert |
-| Un message a été envoyé | Exchanges → payetonkawa → graphique | Pic sur "Publish (In)" |
-| Le consumer tourne | Queues → commandes_client_events → Details | `Consumers: 1` |
-| Des messages sont bloqués | Queues → colonnes Ready/Total | `Ready > 0` qui ne diminue pas |
-| Contenu d'un message | Queues → Get messages | JSON du message |
-| Activité en temps réel | Overview → Message rates | Courbes qui bougent |
-| Connexions actives | Connections | Liste des services connectés |
+1. **Les APIs ne se parlent pas directement.** `api-clients` ne sait pas qu'`api-commandes` existe. Elle publie un message et oublie.
 
----
+2. **Si RabbitMQ est éteint, les APIs continuent de fonctionner.** Elles perdent juste l'envoi des messages — pas de crash.
 
-### Signaux d'alerte — Quand quelque chose ne va pas
+3. **Toujours sauvegarder en base AVANT de publier le message.** Si la base échoue, on ne publie rien.
 
-| Ce que tu vois | Problème probable | Solution |
-|----------------|-------------------|----------|
-| `Consumers: 0` sur une queue | Le consumer est arrêté | `docker compose start consumer-commandes` |
-| `Ready` augmente sans diminuer | Le consumer ne traite pas les messages | Vérifie les logs : `docker compose logs consumer-commandes` |
-| Exchange `payetonkawa` absent | Les APIs n'ont jamais publié | Vérifie que `RABBITMQ_URL` est dans docker-compose |
-| Aucune connexion dans l'onglet Connections | Rien n'est connecté à RabbitMQ | `docker compose up -d` pour redémarrer |
-| Barres Memory/Disk rouges | RabbitMQ manque de ressources | Libère de la mémoire ou de l'espace disque |
+4. **Le consumer est séparé de l'API** pour ne pas bloquer les requêtes HTTP. Un crash du consumer n'affecte pas l'API.
+
+5. **`durable=True` et `delivery_mode=2`** = les messages survivent à un redémarrage de RabbitMQ.
+
+6. **ACK / NACK** : le consumer confirme à RabbitMQ que le message est traité (ACK) ou qu'il faut le remettre en queue (NACK en cas d'erreur).
